@@ -1,0 +1,12 @@
+# O sistema roda apenas com a biblioteca padrão do Python (tkinter + sqlite3),
+# mesmo sem nenhuma das dependências abaixo instaladas.
+
+# Opcional: visual moderno/flat (tema "flatly"). Se não instalado, o sistema
+# usa automaticamente o tema nativo ttk "clam" com as cores da PLANNA.
+ttkbootstrap>=1.10.1
+
+# Opcional: melhora a exibição/redimensionamento do logotipo no cabeçalho.
+Pillow>=9.0.0
+
+# Necessário apenas para gerar o executável (.exe) no Windows:
+pyinstaller>=6.0.0

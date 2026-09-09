@@ -6,6 +6,13 @@ import * as DashboardChartsModule from './components/DashboardCharts';
 import * as ColaboradoresModule from './components/Colaboradores';
 import SstOcorrencias from './components/SstOcorrencias';
 
+// Módulos das novas páginas
+import Epis from './components/Epis';
+import Pcmso from './components/Pcmso';
+import Pendencias from './components/Pendencias';
+import Relatorios from './components/Relatorios';
+import Configuracoes from './components/Configuracoes';
+
 const Sidebar = SidebarModule.default || SidebarModule.Sidebar;
 const KpiCards = KpiCardsModule.default || KpiCardsModule.KpiCards;
 const DashboardCharts = DashboardChartsModule.default || DashboardChartsModule.DashboardCharts;
@@ -53,15 +60,47 @@ export default function App() {
         </header>
 
         <main className="flex-1 p-8 bg-gray-50">
-          {activeTab === 'dashboard' && (
+          {/* Dashboard */}
+          {(activeTab === 'dashboard' || activeTab === 'Dashboard') && (
             <div className="space-y-6">
               {KpiCards && <KpiCards kpis={kpis} />}
               {DashboardCharts && <DashboardCharts />}
             </div>
           )}
 
-          {activeTab === 'colaboradores' && Colaboradores && (
+          {/* Colaboradores */}
+          {(activeTab === 'colaboradores' || activeTab === 'Colaboradores') && Colaboradores && (
             <Colaboradores />
+          )}
+
+          {/* Entrega de EPIs / SST */}
+          {(activeTab === 'sst' || activeTab === 'Entrega de EPIs' || activeTab === 'ocorrencias') && (
+            <SstOcorrencias />
+          )}
+
+          {/* Estoque de EPIs */}
+          {(activeTab === 'epis' || activeTab === 'Estoque de EPIs') && (
+            <Epis />
+          )}
+
+          {/* PCMSO / Exames */}
+          {(activeTab === 'pcmso' || activeTab === 'medicina' || activeTab === 'PCMSO / ASOs') && (
+            <Pcmso />
+          )}
+
+          {/* Central de Pendências */}
+          {(activeTab === 'pendencias' || activeTab === 'Central de Pendências') && (
+            <Pendencias />
+          )}
+
+          {/* Relatórios */}
+          {(activeTab === 'relatorios' || activeTab === 'Relatórios') && (
+            <Relatorios />
+          )}
+
+          {/* Configurações */}
+          {(activeTab === 'configuracoes' || activeTab === 'Configurações') && (
+            <Configuracoes />
           )}
         </main>
       </div>

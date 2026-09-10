@@ -2,7 +2,6 @@ import React from 'react';
 import { 
   LayoutDashboard, 
   Users, 
-  Package, 
   ShieldCheck, 
   Stethoscope, 
   AlertTriangle, 
@@ -14,8 +13,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
   const menuItems = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
     { id: 'colaboradores', name: 'Colaboradores', icon: Users },
-    { id: 'epis', name: 'Estoque de EPIs', icon: Package },
-    { id: 'sst', name: 'Entrega de EPIs', icon: ShieldCheck },
+    { id: 'epis', name: 'EPIs & Estoque', icon: ShieldCheck },
     { id: 'pcmso', name: 'PCMSO / ASOs', icon: Stethoscope },
     { id: 'pendencias', name: 'Central de Pendências', icon: AlertTriangle },
     { id: 'relatorios', name: 'Relatórios', icon: FileSpreadsheet },

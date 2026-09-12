@@ -3,19 +3,22 @@
 Planna RH & SST - API Backend (FastAPI + SQLite)
 Fonte única de verdade para todas as telas do sistema.
 
-Unifica o schema do banco de dados, valida dados no servidor (CPF, duplicidade de setores,
-integridade de vínculos) e disponibiliza todos os endpoints CRUD necessários para o frontend.
+Unifica o schema anteriormente dividido entre main.py e database.py,
+adiciona os endpoints que o frontend já consumia mas que não existiam
+(/api/colaboradores/setores, /api/colaboradores/{id}/permissao,
+/api/configuracoes) e valida CPF/dados obrigatórios no servidor,
+não apenas no frontend.
 """
 import re
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(title="Planna RH & SST API", version="2.1.0")
+app = FastAPI(title="Planna RH & SST API", version="2.0.0")
 
 # --- CONFIGURAÇÃO DE CORS ---
 app.add_middleware(
@@ -78,6 +81,7 @@ def normalizar_cpf(cpf: Optional[str]) -> Optional[str]:
 
 
 def cpf_valido(cpf: Optional[str]) -> bool:
+    """Valida os dígitos verificadores do CPF (mesmo algoritmo usado no frontend)."""
     cpf = re.sub(r"\D", "", cpf or "")
     if len(cpf) != 11 or cpf == cpf[0] * 11:
         return False
@@ -108,7 +112,7 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS setores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL UNIQUE,
+            nome TEXT NOT NULL,
             descricao TEXT
         );
 
@@ -138,7 +142,7 @@ def init_db():
             aso_demissional_concluido INTEGER DEFAULT 0,
             exames_demissionais_obs TEXT,
             criado_em TEXT,
-            FOREIGN KEY (setor_id) REFERENCES setores (id) RESTRICT
+            FOREIGN KEY (setor_id) REFERENCES setores (id)
         );
 
         CREATE TABLE IF NOT EXISTS epis_estoque (
@@ -173,7 +177,45 @@ def init_db():
             resultado TEXT NOT NULL,
             medico_crm TEXT,
             observacoes TEXT,
-            FOREIGN KEY (colaborador_id) REFERENCES colaboradores (id)
+            funcao_pgr_id INTEGER,
+            tem_insalubridade INTEGER DEFAULT 0,
+            grau_insalubridade TEXT,
+            tem_periculosidade INTEGER DEFAULT 0,
+            percentual_periculosidade REAL,
+            FOREIGN KEY (colaborador_id) REFERENCES colaboradores (id),
+            FOREIGN KEY (funcao_pgr_id) REFERENCES pgr_funcoes (id)
+        );
+
+        CREATE TABLE IF NOT EXISTS pcmso_aso_exames (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aso_id INTEGER NOT NULL,
+            nome_exame TEXT NOT NULL,
+            periodicidade_meses INTEGER,
+            FOREIGN KEY (aso_id) REFERENCES pcmso_exames (id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS pgr_funcoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome_funcao TEXT NOT NULL UNIQUE,
+            riscos_identificados TEXT,
+            tem_insalubridade INTEGER DEFAULT 0,
+            grau_insalubridade TEXT,
+            tem_periculosidade INTEGER DEFAULT 0,
+            percentual_periculosidade REAL,
+            observacoes TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS pgr_exames_funcao (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            funcao_id INTEGER NOT NULL,
+            nome_exame TEXT NOT NULL,
+            periodicidade_meses INTEGER NOT NULL DEFAULT 12,
+            obrigatorio_admissional INTEGER DEFAULT 1,
+            obrigatorio_periodico INTEGER DEFAULT 1,
+            obrigatorio_demissional INTEGER DEFAULT 1,
+            obrigatorio_retorno_trabalho INTEGER DEFAULT 0,
+            obrigatorio_mudanca_risco INTEGER DEFAULT 1,
+            FOREIGN KEY (funcao_id) REFERENCES pgr_funcoes (id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS ocorrencias (
@@ -194,6 +236,7 @@ def init_db():
         """
     )
 
+    # --- Migração incremental para bancos já existentes (não apaga dados) ---
     def garantir_coluna(tabela, coluna, tipo_sql):
         cur.execute(f"PRAGMA table_info({tabela})")
         existentes = [c[1] for c in cur.fetchall()]
@@ -213,7 +256,13 @@ def init_db():
     garantir_coluna("epis_entregas", "motivo_troca", "TEXT")
     garantir_coluna("ocorrencias", "gravidade", "TEXT DEFAULT 'Baixa'")
     garantir_coluna("ocorrencias", "status", "TEXT DEFAULT 'Pendente'")
+    garantir_coluna("pcmso_exames", "funcao_pgr_id", "INTEGER")
+    garantir_coluna("pcmso_exames", "tem_insalubridade", "INTEGER DEFAULT 0")
+    garantir_coluna("pcmso_exames", "grau_insalubridade", "TEXT")
+    garantir_coluna("pcmso_exames", "tem_periculosidade", "INTEGER DEFAULT 0")
+    garantir_coluna("pcmso_exames", "percentual_periculosidade", "REAL")
 
+    # Parâmetros padrão de alerta (só cria se ainda não existirem)
     cur.execute("INSERT OR IGNORE INTO configuracoes (chave, valor) VALUES ('dias_alerta_aso', '30')")
     cur.execute("INSERT OR IGNORE INTO configuracoes (chave, valor) VALUES ('dias_alerta_epi', '15')")
 
@@ -292,14 +341,44 @@ class EpiEntregaCreate(BaseModel):
     dias_validade_troca: Optional[int] = 180
 
 
+class ExameComplementarInput(BaseModel):
+    nome_exame: str
+    periodicidade_meses: Optional[int] = None
+
+
 class AsoCreate(BaseModel):
     colaborador_id: int
-    tipo_exame: str
+    tipo_exame: str  # Admissional | Periódico | Demissional | Retorno ao Trabalho | Mudança de Risco
     data_exame: str
-    periodicidade_meses: int = 12
     resultado: str
     medico_crm: Optional[str] = None
     observacoes: Optional[str] = None
+    funcao_pgr_id: Optional[int] = None
+    tem_insalubridade: Optional[bool] = False
+    grau_insalubridade: Optional[str] = None
+    tem_periculosidade: Optional[bool] = False
+    percentual_periculosidade: Optional[float] = None
+    exames_realizados: Optional[List[ExameComplementarInput]] = []
+
+
+class PgrFuncaoCreate(BaseModel):
+    nome_funcao: str
+    riscos_identificados: Optional[str] = None
+    tem_insalubridade: Optional[bool] = False
+    grau_insalubridade: Optional[str] = None
+    tem_periculosidade: Optional[bool] = False
+    percentual_periculosidade: Optional[float] = None
+    observacoes: Optional[str] = None
+
+
+class PgrExameCreate(BaseModel):
+    nome_exame: str
+    periodicidade_meses: int = 12
+    obrigatorio_admissional: Optional[bool] = True
+    obrigatorio_periodico: Optional[bool] = True
+    obrigatorio_demissional: Optional[bool] = True
+    obrigatorio_retorno_trabalho: Optional[bool] = False
+    obrigatorio_mudanca_risco: Optional[bool] = True
 
 
 class OcorrenciaCreate(BaseModel):
@@ -325,7 +404,7 @@ class ConfiguracaoUpdate(BaseModel):
 @app.get("/")
 @app.get("/api")
 def read_root():
-    return {"status": "API Planna rodando com sucesso", "versao": "2.1.0"}
+    return {"status": "API Planna rodando com sucesso", "versao": "2.0.0"}
 
 
 # ----------------------------------------------------------------------
@@ -389,12 +468,6 @@ def cadastrar_setor(setor: SetorCreate):
 
     conn = get_db()
     cur = conn.cursor()
-
-    existente = cur.execute("SELECT id FROM setores WHERE LOWER(nome) = LOWER(?)", (nome,)).fetchone()
-    if existente:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Já existe um setor cadastrado com este nome.")
-
     cur.execute("INSERT INTO setores (nome, descricao) VALUES (?, ?)", (nome, setor.descricao))
     conn.commit()
     novo_id = cur.lastrowid
@@ -403,35 +476,9 @@ def cadastrar_setor(setor: SetorCreate):
     return setor_criado
 
 
-@app.delete("/api/setores/{setor_id}")
-def deletar_setor(setor_id: int):
-    conn = get_db()
-    cur = conn.cursor()
-
-    setor = cur.execute("SELECT id FROM setores WHERE id = ?", (setor_id,)).fetchone()
-    if not setor:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Setor não encontrado.")
-
-    colaboradores_vinculados = cur.execute(
-        "SELECT COUNT(*) FROM colaboradores WHERE setor_id = ?", (setor_id,)
-    ).fetchone()[0]
-
-    if colaboradores_vinculados > 0:
-        conn.close()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Não é possível excluir o setor pois existem {colaboradores_vinculados} colaborador(es) vinculado(s) a ele."
-        )
-
-    cur.execute("DELETE FROM setores WHERE id = ?", (setor_id,))
-    conn.commit()
-    conn.close()
-    return {"message": "Setor removido com sucesso!"}
-
-
 @app.get("/api/colaboradores/setores")
 def colaboradores_por_setor():
+    """Agregação usada no gráfico de rosca do Dashboard (colaboradores ativos por setor)."""
     conn = get_db()
     query = """
         SELECT s.nome AS setor, COUNT(c.id) AS quantidade
@@ -764,9 +811,25 @@ def listar_asos():
         LEFT JOIN colaboradores c ON e.colaborador_id = c.id
         ORDER BY e.data_proximo_exame
     """
-    dados = linhas(conn.execute(query).fetchall())
+    asos = linhas(conn.execute(query).fetchall())
+
+    if asos:
+        aso_ids = [a["id"] for a in asos]
+        placeholders = ",".join("?" * len(aso_ids))
+        complementares = linhas(
+            conn.execute(
+                f"SELECT * FROM pcmso_aso_exames WHERE aso_id IN ({placeholders})",
+                aso_ids,
+            ).fetchall()
+        )
+        mapa_complementares = {}
+        for item in complementares:
+            mapa_complementares.setdefault(item["aso_id"], []).append(item)
+        for aso in asos:
+            aso["exames_realizados"] = mapa_complementares.get(aso["id"], [])
+
     conn.close()
-    return dados
+    return asos
 
 
 @app.post("/api/pcmso/exames")
@@ -779,8 +842,23 @@ def registrar_aso(aso: AsoCreate):
         conn.close()
         raise HTTPException(status_code=404, detail="Colaborador não encontrado.")
 
+    if not (aso.tipo_exame or "").strip():
+        conn.close()
+        raise HTTPException(status_code=400, detail="O tipo de ASO é obrigatório.")
+    if not (aso.resultado or "").strip():
+        conn.close()
+        raise HTTPException(status_code=400, detail="O resultado do exame é obrigatório.")
+
+    # A data do próximo ASO é puxada pela MENOR periodicidade entre os exames
+    # complementares exigidos nesta bateria (ex.: audiometria a cada 12 meses
+    # antecipa o próximo ASO completo mesmo que outro exame vença em 24 meses).
+    periodicidades = [
+        item.periodicidade_meses for item in (aso.exames_realizados or []) if item.periodicidade_meses
+    ]
+    periodicidade_base = min(periodicidades) if periodicidades else 12
+
     try:
-        proximo_exame = somar_meses_iso(aso.data_exame, aso.periodicidade_meses)
+        proximo_exame = somar_meses_iso(aso.data_exame, periodicidade_base)
     except ValueError:
         conn.close()
         raise HTTPException(status_code=400, detail="Data do exame inválida. Utilize o formato AAAA-MM-DD.")
@@ -788,17 +866,244 @@ def registrar_aso(aso: AsoCreate):
     cur.execute(
         """
         INSERT INTO pcmso_exames
-        (colaborador_id, tipo_exame, data_exame, periodicidade_meses, data_proximo_exame, resultado, medico_crm, observacoes)
+        (colaborador_id, tipo_exame, data_exame, periodicidade_meses, data_proximo_exame, resultado,
+         medico_crm, observacoes, funcao_pgr_id, tem_insalubridade, grau_insalubridade,
+         tem_periculosidade, percentual_periculosidade)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            aso.colaborador_id, aso.tipo_exame, aso.data_exame, periodicidade_base,
+            proximo_exame, aso.resultado, aso.medico_crm, aso.observacoes, aso.funcao_pgr_id,
+            1 if aso.tem_insalubridade else 0, aso.grau_insalubridade,
+            1 if aso.tem_periculosidade else 0, aso.percentual_periculosidade,
+        ),
+    )
+    aso_id = cur.lastrowid
+
+    for item in (aso.exames_realizados or []):
+        cur.execute(
+            "INSERT INTO pcmso_aso_exames (aso_id, nome_exame, periodicidade_meses) VALUES (?, ?, ?)",
+            (aso_id, item.nome_exame, item.periodicidade_meses),
+        )
+
+    conn.commit()
+    conn.close()
+    return {"message": "ASO registrado com sucesso!", "data_proximo_exame": proximo_exame}
+
+
+# ----------------------------------------------------------------------
+# PGR / Matriz de Risco por Função — base da automação do PCMSO
+# ----------------------------------------------------------------------
+@app.get("/api/pgr/funcoes")
+def listar_funcoes_pgr():
+    conn = get_db()
+    funcoes = linhas(conn.execute("SELECT * FROM pgr_funcoes ORDER BY nome_funcao").fetchall())
+
+    if funcoes:
+        funcao_ids = [f["id"] for f in funcoes]
+        placeholders = ",".join("?" * len(funcao_ids))
+        exames = linhas(
+            conn.execute(
+                f"SELECT * FROM pgr_exames_funcao WHERE funcao_id IN ({placeholders}) ORDER BY nome_exame",
+                funcao_ids,
+            ).fetchall()
+        )
+        mapa_exames = {}
+        for exame in exames:
+            mapa_exames.setdefault(exame["funcao_id"], []).append(exame)
+        for funcao in funcoes:
+            funcao["exames"] = mapa_exames.get(funcao["id"], [])
+
+    conn.close()
+    return funcoes
+
+
+@app.get("/api/pgr/funcoes/mapa")
+def buscar_funcao_pgr_por_cargo(cargo: str):
+    """Usado pelo modal 'Lançar ASO' para carregar automaticamente a matriz da função
+    a partir do cargo do colaborador selecionado. Retorna null se a função ainda
+    não estiver cadastrada na matriz (o modal cai no fluxo manual nesse caso)."""
+    conn = get_db()
+    funcao = conn.execute(
+        "SELECT * FROM pgr_funcoes WHERE lower(nome_funcao) = lower(?)", (cargo.strip(),)
+    ).fetchone()
+
+    if not funcao:
+        conn.close()
+        return None
+
+    funcao_dict = dict(funcao)
+    funcao_dict["exames"] = linhas(
+        conn.execute(
+            "SELECT * FROM pgr_exames_funcao WHERE funcao_id = ? ORDER BY nome_exame",
+            (funcao_dict["id"],),
+        ).fetchall()
+    )
+    conn.close()
+    return funcao_dict
+
+
+@app.post("/api/pgr/funcoes")
+def cadastrar_funcao_pgr(funcao: PgrFuncaoCreate):
+    nome = (funcao.nome_funcao or "").strip()
+    if not nome:
+        raise HTTPException(status_code=400, detail="O nome da função é obrigatório.")
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO pgr_funcoes
+            (nome_funcao, riscos_identificados, tem_insalubridade, grau_insalubridade,
+             tem_periculosidade, percentual_periculosidade, observacoes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                nome, funcao.riscos_identificados, 1 if funcao.tem_insalubridade else 0,
+                funcao.grau_insalubridade, 1 if funcao.tem_periculosidade else 0,
+                funcao.percentual_periculosidade, funcao.observacoes,
+            ),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Já existe uma função cadastrada com este nome no PGR.")
+
+    novo_id = cur.lastrowid
+    conn.close()
+    return {"id": novo_id, "message": "Função cadastrada na matriz PGR com sucesso!"}
+
+
+@app.put("/api/pgr/funcoes/{funcao_id}")
+def atualizar_funcao_pgr(funcao_id: int, funcao: PgrFuncaoCreate):
+    nome = (funcao.nome_funcao or "").strip()
+    if not nome:
+        raise HTTPException(status_code=400, detail="O nome da função é obrigatório.")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    existente = cur.execute("SELECT id FROM pgr_funcoes WHERE id = ?", (funcao_id,)).fetchone()
+    if not existente:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Função não encontrada na matriz PGR.")
+
+    try:
+        cur.execute(
+            """
+            UPDATE pgr_funcoes SET
+                nome_funcao = ?, riscos_identificados = ?, tem_insalubridade = ?,
+                grau_insalubridade = ?, tem_periculosidade = ?, percentual_periculosidade = ?,
+                observacoes = ?
+            WHERE id = ?
+            """,
+            (
+                nome, funcao.riscos_identificados, 1 if funcao.tem_insalubridade else 0,
+                funcao.grau_insalubridade, 1 if funcao.tem_periculosidade else 0,
+                funcao.percentual_periculosidade, funcao.observacoes, funcao_id,
+            ),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Já existe uma função cadastrada com este nome no PGR.")
+
+    conn.close()
+    return {"message": "Função da matriz PGR atualizada com sucesso!"}
+
+
+@app.delete("/api/pgr/funcoes/{funcao_id}")
+def excluir_funcao_pgr(funcao_id: int):
+    conn = get_db()
+    cur = conn.cursor()
+    existente = cur.execute("SELECT id FROM pgr_funcoes WHERE id = ?", (funcao_id,)).fetchone()
+    if not existente:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Função não encontrada na matriz PGR.")
+
+    cur.execute("DELETE FROM pgr_funcoes WHERE id = ?", (funcao_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Função removida da matriz PGR com sucesso!"}
+
+
+@app.post("/api/pgr/funcoes/{funcao_id}/exames")
+def adicionar_exame_pgr(funcao_id: int, exame: PgrExameCreate):
+    if not (exame.nome_exame or "").strip():
+        raise HTTPException(status_code=400, detail="O nome do exame é obrigatório.")
+
+    conn = get_db()
+    cur = conn.cursor()
+    funcao = cur.execute("SELECT id FROM pgr_funcoes WHERE id = ?", (funcao_id,)).fetchone()
+    if not funcao:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Função não encontrada na matriz PGR.")
+
+    cur.execute(
+        """
+        INSERT INTO pgr_exames_funcao
+        (funcao_id, nome_exame, periodicidade_meses, obrigatorio_admissional, obrigatorio_periodico,
+         obrigatorio_demissional, obrigatorio_retorno_trabalho, obrigatorio_mudanca_risco)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            aso.colaborador_id, aso.tipo_exame, aso.data_exame, aso.periodicidade_meses,
-            proximo_exame, aso.resultado, aso.medico_crm, aso.observacoes,
+            funcao_id, exame.nome_exame.strip(), exame.periodicidade_meses,
+            1 if exame.obrigatorio_admissional else 0, 1 if exame.obrigatorio_periodico else 0,
+            1 if exame.obrigatorio_demissional else 0, 1 if exame.obrigatorio_retorno_trabalho else 0,
+            1 if exame.obrigatorio_mudanca_risco else 0,
+        ),
+    )
+    conn.commit()
+    novo_id = cur.lastrowid
+    conn.close()
+    return {"id": novo_id, "message": "Exame adicionado à função com sucesso!"}
+
+
+@app.put("/api/pgr/exames/{exame_id}")
+def atualizar_exame_pgr(exame_id: int, exame: PgrExameCreate):
+    conn = get_db()
+    cur = conn.cursor()
+    existente = cur.execute("SELECT id FROM pgr_exames_funcao WHERE id = ?", (exame_id,)).fetchone()
+    if not existente:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Exame não encontrado na matriz PGR.")
+
+    cur.execute(
+        """
+        UPDATE pgr_exames_funcao SET
+            nome_exame = ?, periodicidade_meses = ?, obrigatorio_admissional = ?,
+            obrigatorio_periodico = ?, obrigatorio_demissional = ?,
+            obrigatorio_retorno_trabalho = ?, obrigatorio_mudanca_risco = ?
+        WHERE id = ?
+        """,
+        (
+            exame.nome_exame.strip(), exame.periodicidade_meses,
+            1 if exame.obrigatorio_admissional else 0, 1 if exame.obrigatorio_periodico else 0,
+            1 if exame.obrigatorio_demissional else 0, 1 if exame.obrigatorio_retorno_trabalho else 0,
+            1 if exame.obrigatorio_mudanca_risco else 0, exame_id,
         ),
     )
     conn.commit()
     conn.close()
-    return {"message": "ASO registrado com sucesso!"}
+    return {"message": "Exame da matriz PGR atualizado com sucesso!"}
+
+
+@app.delete("/api/pgr/exames/{exame_id}")
+def excluir_exame_pgr(exame_id: int):
+    conn = get_db()
+    cur = conn.cursor()
+    existente = cur.execute("SELECT id FROM pgr_exames_funcao WHERE id = ?", (exame_id,)).fetchone()
+    if not existente:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Exame não encontrado na matriz PGR.")
+
+    cur.execute("DELETE FROM pgr_exames_funcao WHERE id = ?", (exame_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Exame removido da matriz PGR com sucesso!"}
 
 
 # ----------------------------------------------------------------------
@@ -914,7 +1219,7 @@ def buscar_pendencias():
             SELECT e.*, c.nome AS colaborador_nome, c.setor_id
             FROM pcmso_exames e
             JOIN colaboradores c ON e.colaborador_id = c.id
-            WHERE e.data_proximo_exame <= ? AND c.status = 'Ativo'
+            WHERE e.data_proximo_exame <= ? AND c.status = 'Ativo' AND e.tipo_exame != 'Demissional'
             ORDER BY e.data_proximo_exame
             """,
             (limite_aso,),

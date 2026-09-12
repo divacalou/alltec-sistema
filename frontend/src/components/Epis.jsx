@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  ShieldCheck, 
-  Plus, 
-  AlertTriangle, 
-  X, 
-  Search, 
-  PackageCheck, 
-  ArrowDownLeft, 
+import {
+  ShieldCheck,
+  Plus,
+  AlertTriangle,
+  X,
+  Search,
+  PackageCheck,
+  ArrowDownLeft,
   RefreshCw,
   UserCheck,
   Trash2,
@@ -19,15 +19,15 @@ import { api } from '../services/api';
 
 export default function Epis() {
   const [activeSubTab, setActiveSubTab] = useState('estoque'); // 'estoque' | 'relatorios'
-  
+
   const [epis, setEpis] = useState([]);
   const [colaboradores, setColaboradores] = useState([]);
   const [historicoEntregas, setHistoricoEntregas] = useState([]);
-  
+
   const [busca, setBusca] = useState('');
   const [filtroRelatorio, setFiltroRelatorio] = useState({ busca: '', dataInicio: '', dataFim: '' });
   const [loading, setLoading] = useState(false);
-  
+
   // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEntradaModalOpen, setIsEntradaModalOpen] = useState(false);
@@ -74,7 +74,7 @@ export default function Epis() {
       const res = await api.get('/epis');
       setEpis(res.data || []);
     } catch (err) {
-      console.error("Erro ao carregar EPIs", err);
+      console.error('Erro ao carregar EPIs', err);
     } finally {
       setLoading(false);
     }
@@ -85,7 +85,7 @@ export default function Epis() {
       const res = await api.get('/colaboradores');
       setColaboradores(res.data || []);
     } catch (err) {
-      console.error("Erro ao carregar colaboradores", err);
+      console.error('Erro ao carregar colaboradores', err);
     }
   };
 
@@ -94,23 +94,26 @@ export default function Epis() {
       const res = await api.get('/epis/entrega');
       setHistoricoEntregas(res.data || []);
     } catch (err) {
-      console.error("Erro ao carregar histórico de entregas", err);
+      console.error('Erro ao carregar histórico de entregas', err);
     }
   };
 
   const handleCadastrar = async (e) => {
     e.preventDefault();
+    if (!novoEpi.nome.trim() || !novoEpi.ca.trim() || !novoEpi.validade_ca) {
+      alert('Preencha nome, número do C.A. e validade do C.A.');
+      return;
+    }
     try {
       await api.post('/epis', novoEpi);
       setIsModalOpen(false);
       setNovoEpi({ nome: '', ca: '', validade_ca: '', quantidade_estoque: 0, quantidade_minima: 5, descricao: '' });
       carregarEpis();
     } catch (err) {
-      alert("Erro ao cadastrar EPI: " + (err.response?.data?.detail || err.message));
+      alert('Erro ao cadastrar EPI: ' + (err.response?.data?.detail || err.message));
     }
   };
 
-  // Correção na Reposição de Estoque
   const handleAdicionarEstoque = async (e) => {
     e.preventDefault();
     if (!epiSelecionado) return;
@@ -119,27 +122,20 @@ export default function Epis() {
       const qtdAdicional = Number(qtdEntrada);
       const novaQtd = Number(epiSelecionado.quantidade_estoque || 0) + qtdAdicional;
 
-      // Suporta PUT ou PATCH
-      await api.put(`/epis/${epiSelecionado.id}`, { 
-        ...epiSelecionado,
-        quantidade_estoque: novaQtd 
-      }).catch(async () => {
-        await api.patch(`/epis/${epiSelecionado.id}`, { quantidade_estoque: novaQtd });
-      });
+      await api.patch(`/epis/${epiSelecionado.id}`, { quantidade_estoque: novaQtd });
 
-      alert("Estoque atualizado com sucesso!");
       setIsEntradaModalOpen(false);
       setEpiSelecionado(null);
       setQtdEntrada(1);
       carregarEpis();
     } catch (err) {
-      alert("Erro ao atualizar estoque: " + (err.response?.data?.detail || err.message));
+      alert('Erro ao atualizar estoque: ' + (err.response?.data?.detail || err.message));
     }
   };
 
   const adicionarItemAEntrega = () => {
     if (epis.length === 0) return;
-    setEntregaForm(prev => ({
+    setEntregaForm((prev) => ({
       ...prev,
       itens: [
         ...prev.itens,
@@ -149,14 +145,14 @@ export default function Epis() {
   };
 
   const removerItemDaEntrega = (index) => {
-    setEntregaForm(prev => ({
+    setEntregaForm((prev) => ({
       ...prev,
       itens: prev.itens.filter((_, i) => i !== index)
     }));
   };
 
   const atualizarItemEntrega = (index, campo, valor) => {
-    setEntregaForm(prev => {
+    setEntregaForm((prev) => {
       const novosItens = [...prev.itens];
       novosItens[index][campo] = valor;
       return { ...prev, itens: novosItens };
@@ -166,23 +162,23 @@ export default function Epis() {
   const handleConfirmarEntrega = async (e) => {
     e.preventDefault();
     if (!entregaForm.colaborador_id) {
-      alert("Selecione um colaborador.");
+      alert('Selecione um colaborador.');
       return;
     }
     if (entregaForm.itens.length === 0) {
-      alert("Adicione pelo menos um EPI à lista.");
+      alert('Adicione pelo menos um EPI à lista.');
       return;
     }
 
     try {
-      const colab = colaboradores.find(c => Number(c.id) === Number(entregaForm.colaborador_id));
-      
-      const itensDetalhados = entregaForm.itens.map(item => {
-        const epiInfo = epis.find(e => Number(e.id) === Number(item.epi_id));
+      const colab = colaboradores.find((c) => Number(c.id) === Number(entregaForm.colaborador_id));
+
+      const itensDetalhados = entregaForm.itens.map((item) => {
+        const epiInfo = epis.find((ep) => Number(ep.id) === Number(item.epi_id));
         return {
           ...item,
           nome: epiInfo?.nome || 'EPI não especificado',
-          ca: epiInfo?.ca || '—',
+          ca: epiInfo?.ca || '—'
         };
       });
 
@@ -206,7 +202,7 @@ export default function Epis() {
       carregarEpis();
       carregarHistoricoEntregas();
     } catch (err) {
-      alert("Erro ao processar entrega: " + (err.response?.data?.detail || err.message));
+      alert('Erro ao processar entrega: ' + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -216,44 +212,51 @@ export default function Epis() {
 
   // Reabrir o termo/documento para um relatório do histórico
   const visualizarTermoHistorico = (entrega) => {
-    const colab = colaboradores.find(c => Number(c.id) === Number(entrega.colaborador_id)) || { nome: entrega.colaborador_nome, cargo: entrega.colaborador_cargo, id: entrega.colaborador_id };
-    const epiInfo = epis.find(e => Number(e.id) === Number(entrega.epi_id));
+    const colab = colaboradores.find((c) => Number(c.id) === Number(entrega.colaborador_id)) || {
+      nome: entrega.colaborador_nome,
+      cargo: entrega.colaborador_cargo,
+      id: entrega.colaborador_id
+    };
+    const epiInfo = epis.find((ep) => Number(ep.id) === Number(entrega.epi_id));
 
     setTermoImpressao({
       colaborador: colab,
       data_entrega: entrega.data_entrega,
-      itens: [{
-        nome: entrega.epi_nome || epiInfo?.nome || 'EPI',
-        ca: entrega.ca || epiInfo?.ca || '—',
-        quantidade: entrega.quantidade || 1,
-        motivo_troca: entrega.motivo_troca || 'ENTREGA'
-      }]
+      itens: [
+        {
+          nome: entrega.epi_nome || epiInfo?.nome || 'EPI',
+          ca: entrega.ca || epiInfo?.ca || '—',
+          quantidade: entrega.quantidade || 1,
+          motivo_troca: entrega.motivo_troca || 'ENTREGA'
+        }
+      ]
     });
   };
 
   const totalTipos = epis.length;
   const totalUnidades = epis.reduce((acc, curr) => acc + Number(curr.quantidade_estoque || 0), 0);
-  const itensCriticos = epis.filter(e => Number(e.quantidade_estoque || 0) <= Number(e.quantidade_minima || 5)).length;
+  const itensCriticos = epis.filter((e) => Number(e.quantidade_estoque || 0) <= Number(e.quantidade_minima || 5)).length;
 
-  const episFiltrados = epis.filter(e => 
-    e.nome?.toLowerCase().includes(busca.toLowerCase()) ||
-    (e.ca && e.ca.toString().toLowerCase().includes(busca.toLowerCase()))
+  const episFiltrados = epis.filter(
+    (e) =>
+      e.nome?.toLowerCase().includes(busca.toLowerCase()) ||
+      (e.ca && e.ca.toString().toLowerCase().includes(busca.toLowerCase()))
   );
 
-  const entregasFiltradas = historicoEntregas.filter(ent => {
+  const entregasFiltradas = historicoEntregas.filter((ent) => {
     const termo = filtroRelatorio.busca.toLowerCase();
     const nomeColab = ent.colaborador_nome?.toLowerCase() || '';
     const nomeEpi = ent.epi_nome?.toLowerCase() || '';
     const ca = ent.ca?.toString().toLowerCase() || '';
 
     const combinaTexto = nomeColab.includes(termo) || nomeEpi.includes(termo) || ca.includes(termo);
-    
+
     let combinaData = true;
     if (filtroRelatorio.dataInicio) {
-      combinaData = combinaData && (ent.data_entrega >= filtroRelatorio.dataInicio);
+      combinaData = combinaData && ent.data_entrega >= filtroRelatorio.dataInicio;
     }
     if (filtroRelatorio.dataFim) {
-      combinaData = combinaData && (ent.data_entrega <= filtroRelatorio.dataFim);
+      combinaData = combinaData && ent.data_entrega <= filtroRelatorio.dataFim;
     }
 
     return combinaTexto && combinaData;
@@ -282,15 +285,15 @@ export default function Epis() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-5 rounded-xl border border-slate-200 shadow-sm gap-4 no-print">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <ShieldCheck className="text-red-600" size={24} /> Gestão & Controle de EPIs
+            <ShieldCheck className="text-rose-600" size={24} /> Gestão & Controle de EPIs
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             Módulo integrado para controle de saldos, reabastecimento e relatórios de entrega.
           </p>
         </div>
-        
+
         <div className="flex flex-wrap gap-2">
-          <button 
+          <button
             onClick={() => {
               setEntregaForm({
                 colaborador_id: '',
@@ -299,14 +302,14 @@ export default function Epis() {
               });
               setIsEntregaModalOpen(true);
             }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-sm transition-all"
+            className="bg-white hover:bg-slate-50 border-2 border-slate-900 text-slate-900 text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all"
           >
             <UserCheck size={16} /> REGISTRAR ENTREGA DE EPI
           </button>
 
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-sm transition-all"
+            className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-sm transition-all"
           >
             <Plus size={16} /> NOVO EPI
           </button>
@@ -319,7 +322,7 @@ export default function Epis() {
           onClick={() => setActiveSubTab('estoque')}
           className={`pb-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-all ${
             activeSubTab === 'estoque'
-              ? 'border-red-600 text-red-600'
+              ? 'border-slate-900 text-slate-900'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -330,7 +333,7 @@ export default function Epis() {
           onClick={() => setActiveSubTab('relatorios')}
           className={`pb-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-all ${
             activeSubTab === 'relatorios'
-              ? 'border-red-600 text-red-600'
+              ? 'border-slate-900 text-slate-900'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -356,9 +359,9 @@ export default function Epis() {
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
               <div>
                 <span className="text-xs font-semibold text-slate-500 uppercase">Saldo Total no Estoque</span>
-                <h3 className="text-2xl font-bold text-emerald-600 mt-1">{totalUnidades} un</h3>
+                <h3 className="text-2xl font-bold text-slate-900 mt-1">{totalUnidades} un</h3>
               </div>
-              <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600 border border-emerald-100">
+              <div className="p-3 bg-slate-100 rounded-lg text-slate-600">
                 <PackageCheck size={20} />
               </div>
             </div>
@@ -366,15 +369,17 @@ export default function Epis() {
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
               <div>
                 <span className="text-xs font-semibold text-slate-500 uppercase">Estoque Crítico / Alerta</span>
-                <h3 className={`text-2xl font-bold mt-1 ${itensCriticos > 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                <h3 className={`text-2xl font-bold mt-1 ${itensCriticos > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
                   {itensCriticos}
                 </h3>
               </div>
-              <div className={`p-3 rounded-lg border ${
-                itensCriticos > 0 
-                  ? 'bg-red-50 text-red-600 border-red-100' 
-                  : 'bg-slate-100 text-slate-500 border-slate-200'
-              }`}>
+              <div
+                className={`p-3 rounded-lg border ${
+                  itensCriticos > 0
+                    ? 'bg-rose-50 text-rose-600 border-rose-100'
+                    : 'bg-slate-100 text-slate-500 border-slate-200'
+                }`}
+              >
                 <AlertTriangle size={20} />
               </div>
             </div>
@@ -390,12 +395,12 @@ export default function Epis() {
                   placeholder="Buscar por EPI ou Nº C.A..."
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                 />
               </div>
 
-              <button 
-                onClick={carregarEpis} 
+              <button
+                onClick={carregarEpis}
                 className="p-2 bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-600 rounded-lg transition-all"
                 title="Atualizar Tabela"
               >
@@ -416,9 +421,13 @@ export default function Epis() {
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {loading ? (
-                    <tr><td colSpan="5" className="p-4 text-center text-slate-500 text-xs">Carregando dados...</td></tr>
+                    <tr>
+                      <td colSpan="5" className="p-4 text-center text-slate-500 text-xs">Carregando dados...</td>
+                    </tr>
                   ) : episFiltrados.length === 0 ? (
-                    <tr><td colSpan="5" className="p-4 text-center text-slate-500 text-xs">Nenhum EPI encontrado.</td></tr>
+                    <tr>
+                      <td colSpan="5" className="p-4 text-center text-slate-500 text-xs">Nenhum EPI encontrado.</td>
+                    </tr>
                   ) : (
                     episFiltrados.map((e) => {
                       const estMin = Number(e.quantidade_minima || 5);
@@ -431,7 +440,7 @@ export default function Epis() {
                           <td className="p-3.5 text-slate-600 font-mono text-xs">{e.ca || '—'}</td>
                           <td className="p-3.5 text-slate-600 text-xs">{formatarDataBR(e.validade_ca)}</td>
                           <td className="p-3.5 font-bold">
-                            <span className={isBaixo ? "text-red-600 flex items-center gap-1 font-bold" : "text-emerald-600 font-bold"}>
+                            <span className={isBaixo ? 'text-rose-600 flex items-center gap-1 font-bold' : 'text-slate-700 font-bold'}>
                               {isBaixo && <AlertTriangle size={14} />}
                               {estAtual} un
                             </span>
@@ -443,7 +452,7 @@ export default function Epis() {
                                 setQtdEntrada(1);
                                 setIsEntradaModalOpen(true);
                               }}
-                              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-lg transition-all inline-flex items-center gap-1"
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg transition-all inline-flex items-center gap-1"
                             >
                               <ArrowDownLeft size={13} /> + Reabastecer
                             </button>
@@ -467,7 +476,7 @@ export default function Epis() {
               <h3 className="text-base font-bold text-slate-900">Relatório Geral de Entregas Realizadas</h3>
               <p className="text-xs text-slate-500">Histórico completo de baixas e fornecimentos aos colaboradores.</p>
             </div>
-            <button 
+            <button
               onClick={carregarHistoricoEntregas}
               className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold flex items-center gap-1.5"
             >
@@ -479,32 +488,32 @@ export default function Epis() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">Buscar por Colaborador / EPI / C.A.</label>
-              <input 
+              <input
                 type="text"
                 placeholder="Digite o nome, EPI ou Nº C.A..."
                 value={filtroRelatorio.busca}
                 onChange={(e) => setFiltroRelatorio({ ...filtroRelatorio, busca: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
               />
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">Data Inicial</label>
-              <input 
+              <input
                 type="date"
                 value={filtroRelatorio.dataInicio}
                 onChange={(e) => setFiltroRelatorio({ ...filtroRelatorio, dataInicio: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
               />
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">Data Final</label>
-              <input 
+              <input
                 type="date"
                 value={filtroRelatorio.dataFim}
                 onChange={(e) => setFiltroRelatorio({ ...filtroRelatorio, dataFim: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
               />
             </div>
           </div>
@@ -525,7 +534,9 @@ export default function Epis() {
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {entregasFiltradas.length === 0 ? (
-                  <tr><td colSpan="7" className="p-4 text-center text-slate-500 text-xs">Nenhum registro de entrega encontrado.</td></tr>
+                  <tr>
+                    <td colSpan="7" className="p-4 text-center text-slate-500 text-xs">Nenhum registro de entrega encontrado.</td>
+                  </tr>
                 ) : (
                   entregasFiltradas.map((ent, idx) => (
                     <tr key={ent.id || idx} className="hover:bg-slate-50 transition-all">
@@ -533,7 +544,7 @@ export default function Epis() {
                       <td className="p-3.5 font-bold text-slate-900">{ent.colaborador_nome || `ID #${ent.colaborador_id}`}</td>
                       <td className="p-3.5 font-medium">{ent.epi_nome || `EPI #${ent.epi_id}`}</td>
                       <td className="p-3.5 font-mono text-xs text-slate-600">{ent.ca || '—'}</td>
-                      <td className="p-3.5 text-center font-bold text-emerald-600">{ent.quantidade} un</td>
+                      <td className="p-3.5 text-center font-bold text-slate-800">{ent.quantidade} un</td>
                       <td className="p-3.5 text-xs text-slate-500 uppercase">{ent.motivo_troca || 'ENTREGA'}</td>
                       <td className="p-3.5 text-right">
                         <button
@@ -557,7 +568,7 @@ export default function Epis() {
         <div id="termo-impressao" className="bg-white p-6 rounded-xl border border-slate-300 shadow-md space-y-4">
           <div className="flex justify-between items-center border-b border-slate-300 pb-4 no-print">
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <FileText className="text-red-600" size={20} />
+              <FileText className="text-rose-600" size={20} />
               Documento de Entrega Gerado
             </h2>
             <div className="flex gap-2">
@@ -600,7 +611,9 @@ export default function Epis() {
               </div>
               <div>
                 <span className="block text-[9px] font-bold text-slate-500 uppercase">REGISTRO / MATRÍCULA</span>
-                <span className="font-semibold text-xs">{termoImpressao.colaborador?.id || '—'}</span>
+                <span className="font-semibold text-xs">
+                  {termoImpressao.colaborador?.matricula || termoImpressao.colaborador?.id || '—'}
+                </span>
               </div>
               <div>
                 <span className="block text-[9px] font-bold text-slate-500 uppercase">DATA DA EMISSÃO</span>
@@ -676,7 +689,7 @@ export default function Epis() {
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <UserCheck className="text-emerald-600" size={20} />
+                  <UserCheck className="text-slate-700" size={20} />
                   Ficha de Entrega de EPIs
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">Selecione o colaborador e os EPIs a serem entregues.</p>
@@ -692,7 +705,7 @@ export default function Epis() {
                     required
                     value={entregaForm.colaborador_id}
                     onChange={(e) => setEntregaForm({ ...entregaForm, colaborador_id: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                   >
                     <option value="">Selecione o funcionário...</option>
                     {colaboradores.map((c) => (
@@ -705,12 +718,12 @@ export default function Epis() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Data da Entrega</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     required
                     value={entregaForm.data_entrega}
                     onChange={(e) => setEntregaForm({ ...entregaForm, data_entrega: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                   />
                 </div>
               </div>
@@ -721,7 +734,7 @@ export default function Epis() {
                   <button
                     type="button"
                     onClick={adicionarItemAEntrega}
-                    className="text-xs text-emerald-700 hover:bg-emerald-100 font-bold flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-md transition-all"
+                    className="text-xs text-slate-700 hover:bg-slate-200 font-bold flex items-center gap-1 bg-slate-100 border border-slate-300 px-3 py-1 rounded-md transition-all"
                   >
                     <Plus size={14} /> Adicionar EPI
                   </button>
@@ -733,7 +746,7 @@ export default function Epis() {
                   </div>
                 ) : (
                   entregaForm.itens.map((item, index) => {
-                    const epiInfo = epis.find(e => Number(e.id) === Number(item.epi_id));
+                    const epiInfo = epis.find((e) => Number(e.id) === Number(item.epi_id));
                     const saldoEstoque = epiInfo ? Number(epiInfo.quantidade_estoque) : 0;
 
                     return (
@@ -743,7 +756,7 @@ export default function Epis() {
                           <select
                             value={item.epi_id}
                             onChange={(e) => atualizarItemEntrega(index, 'epi_id', e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                           >
                             {epis.map((e) => (
                               <option key={e.id} value={e.id}>
@@ -755,24 +768,24 @@ export default function Epis() {
 
                         <div className="w-full sm:w-24">
                           <label className="block text-[10px] text-slate-500 font-bold mb-1">Qtd</label>
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             min="1"
                             max={saldoEstoque || 1}
                             value={item.quantidade}
                             onChange={(e) => atualizarItemEntrega(index, 'quantidade', e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                           />
                         </div>
 
                         <div className="w-full sm:w-36">
                           <label className="block text-[10px] text-slate-500 font-bold mb-1">Motivo</label>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={item.motivo_troca}
                             onChange={(e) => atualizarItemEntrega(index, 'motivo_troca', e.target.value)}
                             placeholder="Ex: Primeiras luvas / Troca"
-                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                           />
                         </div>
 
@@ -780,7 +793,7 @@ export default function Epis() {
                           <button
                             type="button"
                             onClick={() => removerItemDaEntrega(index)}
-                            className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                            className="p-2 text-slate-400 hover:text-rose-600 transition-colors"
                             title="Remover Item"
                           >
                             <Trash2 size={16} />
@@ -793,16 +806,16 @@ export default function Epis() {
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
-                <button 
-                  type="button" 
-                  onClick={() => setIsEntregaModalOpen(false)} 
+                <button
+                  type="button"
+                  onClick={() => setIsEntregaModalOpen(false)}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all"
                 >
                   Cancelar
                 </button>
-                <button 
-                  type="submit" 
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm transition-all"
                 >
                   Gerar Termo de Entrega ({entregaForm.itens.length})
                 </button>
@@ -824,36 +837,36 @@ export default function Epis() {
             <form onSubmit={handleCadastrar} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Nome do Equipamento</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   required
                   placeholder="Ex: Luva Pigmentada / Capacetes"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                   value={novoEpi.nome}
-                  onChange={(e) => setNovoEpi({...novoEpi, nome: e.target.value})}
+                  onChange={(e) => setNovoEpi({ ...novoEpi, nome: e.target.value })}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Número do C.A.</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     required
                     placeholder="Ex: 34491"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                     value={novoEpi.ca}
-                    onChange={(e) => setNovoEpi({...novoEpi, ca: e.target.value})}
+                    onChange={(e) => setNovoEpi({ ...novoEpi, ca: e.target.value })}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Validade do C.A.</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     required
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                     value={novoEpi.validade_ca}
-                    onChange={(e) => setNovoEpi({...novoEpi, validade_ca: e.target.value})}
+                    onChange={(e) => setNovoEpi({ ...novoEpi, validade_ca: e.target.value })}
                   />
                 </div>
               </div>
@@ -861,30 +874,42 @@ export default function Epis() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Estoque Inicial</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     required
                     min="0"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                     value={novoEpi.quantidade_estoque}
-                    onChange={(e) => setNovoEpi({...novoEpi, quantidade_estoque: parseInt(e.target.value) || 0})}
+                    onChange={(e) => setNovoEpi({ ...novoEpi, quantidade_estoque: parseInt(e.target.value, 10) || 0 })}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Qtd Mínima Alerta</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     required
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                    min="0"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                     value={novoEpi.quantidade_minima}
-                    onChange={(e) => setNovoEpi({...novoEpi, quantidade_minima: parseInt(e.target.value) || 0})}
+                    onChange={(e) => setNovoEpi({ ...novoEpi, quantidade_minima: parseInt(e.target.value, 10) || 0 })}
                   />
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Descrição / Observações</label>
+                <textarea
+                  rows="2"
+                  placeholder="Ex: Uso obrigatório em áreas de risco de queda"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
+                  value={novoEpi.descricao}
+                  onChange={(e) => setNovoEpi({ ...novoEpi, descricao: e.target.value })}
+                ></textarea>
+              </div>
+
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm">Salvar EPI</button>
+                <button type="submit" className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm">Salvar EPI</button>
               </div>
             </form>
           </div>
@@ -906,19 +931,19 @@ export default function Epis() {
             <form onSubmit={handleAdicionarEstoque} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Quantidade Adicionada</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   min="1"
                   required
                   value={qtdEntrada}
-                  onChange={(e) => setQtdEntrada(parseInt(e.target.value) || 1)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                  onChange={(e) => setQtdEntrada(parseInt(e.target.value, 10) || 1)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                 <button type="button" onClick={() => setIsEntradaModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg shadow-sm">Adicionar ao Saldo</button>
+                <button type="submit" className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm">Adicionar ao Saldo</button>
               </div>
             </form>
           </div>

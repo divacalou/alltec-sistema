@@ -3,6 +3,7 @@ import { Users, Plus, Building2, X, Truck, Edit, UserX, UserCheck, Eye, FileText
 import { api } from '../services/api';
 
 const formatarCPF = (value) => {
+  if (!value) return '';
   return value
     .replace(/\D/g, '')
     .replace(/(\d{3})(\d)/, '$1.$2')
@@ -12,6 +13,7 @@ const formatarCPF = (value) => {
 };
 
 const validarCPF = (cpf) => {
+  if (!cpf) return false;
   const cleanCPF = cpf.replace(/\D/g, '');
   if (cleanCPF.length !== 11 || /^(\d)\1{10}$/.test(cleanCPF)) return false;
 
@@ -36,6 +38,27 @@ const validarCPF = (cpf) => {
   return true;
 };
 
+const formatarDataExibicao = (dataStr) => {
+  if (!dataStr) return '-';
+  if (dataStr.includes('/')) return dataStr;
+  try {
+    const data = new Date(dataStr);
+    return isNaN(data.getTime()) ? dataStr : data.toLocaleDateString('pt-BR');
+  } catch {
+    return dataStr;
+  }
+};
+
+const formatarDataParaInput = (dataStr) => {
+  if (!dataStr) return '';
+  if (dataStr.includes('-')) return dataStr.split('T')[0];
+  const partes = dataStr.split('/');
+  if (partes.length === 3) {
+    return `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+  }
+  return dataStr;
+};
+
 const estadoInicialColaborador = {
   nome: '',
   cpf: '',
@@ -44,6 +67,9 @@ const estadoInicialColaborador = {
   data_admissao: '',
   endereco: '',
   cargo: '',
+  funcao_opcional: '',
+  observacoes_contrato: '',
+  data_afastamento: '',
   setor_id: '',
   is_motorista: false,
   tipo_veiculo: 'Basculante',
@@ -58,10 +84,18 @@ const estadoInicialColaborador = {
   exames_demissionais_obs: ''
 };
 
+const estadoInicialDesligamento = {
+  data_demissao: new Date().toISOString().split('T')[0],
+  motivo_demissao: 'Sem Justa Causa',
+  observacao_demissao: '',
+  aso_demissional_concluido: false,
+  exames_demissionais_obs: ''
+};
+
 export default function Colaboradores() {
   const [colaboradores, setColaboradores] = useState([]);
   const [setores, setSetores] = useState([]);
-  
+
   const [filtroStatus, setFiltroStatus] = useState('Ativo');
 
   const [modalColaboradorOpen, setModalColaboradorOpen] = useState(false);
@@ -72,43 +106,26 @@ export default function Colaboradores() {
   const [editingId, setEditingId] = useState(null);
   const [colaboradorParaDesligar, setColaboradorParaDesligar] = useState(null);
   const [colaboradorDetalhado, setColaboradorDetalhado] = useState(null);
+  const [salvando, setSalvando] = useState(false);
 
   const [novoColaborador, setNovoColaborador] = useState(estadoInicialColaborador);
-  const [dadosDesligamento, setDadosDesligamento] = useState({
-    data_demissao: new Date().toISOString().split('T')[0],
-    motivo_demissao: 'Sem Justa Causa',
-    observacao_demissao: '',
-    aso_demissional_concluido: false,
-    exames_demissionais_obs: ''
-  });
-
+  const [dadosDesligamento, setDadosDesligamento] = useState(estadoInicialDesligamento);
   const [novoSetor, setNovoSetor] = useState({ nome: '', descricao: '' });
 
   const carregarDados = async () => {
     try {
       const [resColab, resSetores] = await Promise.all([
-        api.get('/api/colaboradores'),
-        api.get('/api/setores')
+        api.get('/colaboradores'),
+        api.get('/setores')
       ]);
 
-      let listaColab = [];
-      if (Array.isArray(resColab.data)) {
-        listaColab = resColab.data;
-      } else if (resColab.data && typeof resColab.data === 'object') {
-        listaColab = resColab.data.colaboradores || [resColab.data];
-      }
-
-      let listaSetores = [];
-      if (Array.isArray(resSetores.data)) {
-        listaSetores = resSetores.data;
-      } else if (resSetores.data && typeof resSetores.data === 'object') {
-        listaSetores = resSetores.data.setores || [resSetores.data];
-      }
+      const listaColab = Array.isArray(resColab.data) ? resColab.data : [];
+      const listaSetores = Array.isArray(resSetores.data) ? resSetores.data : [];
 
       setColaboradores(listaColab);
       setSetores(listaSetores);
     } catch (err) {
-      console.error("Erro ao carregar dados do backend:", err);
+      console.error('Erro ao carregar dados do backend:', err);
     }
   };
 
@@ -141,16 +158,6 @@ export default function Colaboradores() {
     setModalColaboradorOpen(true);
   };
 
-  const formatarDataParaInput = (dataStr) => {
-    if (!dataStr) return '';
-    if (dataStr.includes('-')) return dataStr.split('T')[0];
-    const partes = dataStr.split('/');
-    if (partes.length === 3) {
-      return `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
-    }
-    return dataStr;
-  };
-
   const handleEditar = (colaborador) => {
     setEditingId(colaborador.id);
     setNovoColaborador({
@@ -159,9 +166,12 @@ export default function Colaboradores() {
       matricula: colaborador.matricula || '',
       data_nascimento: formatarDataParaInput(colaborador.data_nascimento),
       data_admissao: formatarDataParaInput(colaborador.data_admissao),
-      cargo: colaborador.cargo || colaborador.funcao || colaborador.funcão || '',
+      cargo: colaborador.cargo || '',
+      funcao_opcional: colaborador.funcao_opcional || '',
+      observacoes_contrato: colaborador.observacoes_contrato || '',
+      data_afastamento: formatarDataParaInput(colaborador.data_afastamento),
       setor_id: colaborador.setor_id || '',
-      endereco: colaborador.endereco || colaborador.cidade || '',
+      endereco: colaborador.endereco || '',
       is_motorista: Boolean(colaborador.is_motorista),
       tipo_veiculo: colaborador.tipo_veiculo || 'Basculante',
       cnh_numero: colaborador.cnh_numero || '',
@@ -178,26 +188,21 @@ export default function Colaboradores() {
   };
 
   const handleAcaoStatus = (colaborador) => {
-    if (colaborador.status === 'Inativo') {
+    const isCurrentlyInativo = String(colaborador.status).toLowerCase() === 'inativo';
+    if (isCurrentlyInativo) {
       if (window.confirm(`Deseja reativar o colaborador ${colaborador.nome}?`)) {
         reativarColaborador(colaborador.id);
       }
     } else {
       setColaboradorParaDesligar(colaborador);
-      setDadosDesligamento({
-        data_demissao: new Date().toISOString().split('T')[0],
-        motivo_demissao: 'Sem Justa Causa',
-        observacao_demissao: '',
-        aso_demissional_concluido: false,
-        exames_demissionais_obs: ''
-      });
+      setDadosDesligamento(estadoInicialDesligamento);
       setModalDesligamentoOpen(true);
     }
   };
 
   const reativarColaborador = async (id) => {
     try {
-      await api.patch(`/api/colaboradores/${id}`, { 
+      await api.patch(`/colaboradores/${id}`, {
         status: 'Ativo',
         data_demissao: null,
         motivo_demissao: null,
@@ -207,14 +212,14 @@ export default function Colaboradores() {
       });
       carregarDados();
     } catch (err) {
-      alert("Erro ao reativar colaborador: " + (err.response?.data?.detail || err.message));
+      alert('Erro ao reativar colaborador: ' + (err.response?.data?.detail || err.message));
     }
   };
 
   const handleConfirmarDesligamento = async (e) => {
     e.preventDefault();
     try {
-      await api.patch(`/api/colaboradores/${colaboradorParaDesligar.id}`, {
+      await api.patch(`/colaboradores/${colaboradorParaDesligar.id}`, {
         status: 'Inativo',
         ...dadosDesligamento
       });
@@ -222,7 +227,7 @@ export default function Colaboradores() {
       setColaboradorParaDesligar(null);
       carregarDados();
     } catch (err) {
-      alert("Erro ao desativar colaborador: " + (err.response?.data?.detail || err.message));
+      alert('Erro ao desativar colaborador: ' + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -230,30 +235,38 @@ export default function Colaboradores() {
     e.preventDefault();
 
     if (!validarCPF(novoColaborador.cpf)) {
-      alert("CPF inválido! Verifique os números digitados.");
+      alert('CPF inválido! Verifique os números digitados.');
+      return;
+    }
+
+    if (!novoColaborador.nome.trim() || !novoColaborador.cargo.trim() || !novoColaborador.data_admissao) {
+      alert('Preencha nome, função/cargo e data de admissão.');
       return;
     }
 
     if (novoColaborador.is_motorista) {
       if (novoColaborador.cnh_numero && novoColaborador.cnh_numero.length !== 11) {
-        alert("O número da CNH deve ter exatamente 11 dígitos.");
+        alert('O número da CNH deve ter exatamente 11 dígitos.');
         return;
       }
       if (!novoColaborador.cnh_validade) {
-        alert("Preencha a validade da CNH.");
+        alert('Preencha a validade da CNH.');
         return;
       }
     }
 
     const payload = {
-      nome: novoColaborador.nome,
+      nome: novoColaborador.nome.trim(),
       cpf: novoColaborador.cpf ? novoColaborador.cpf.replace(/\D/g, '') : '',
-      matricula: novoColaborador.matricula,
+      matricula: novoColaborador.matricula || null,
       data_nascimento: novoColaborador.data_nascimento || null,
       data_admissao: novoColaborador.data_admissao || null,
-      endereco: novoColaborador.endereco || '',
-      cargo: novoColaborador.cargo,
-      setor_id: novoColaborador.setor_id ? parseInt(novoColaborador.setor_id) : null,
+      cargo: novoColaborador.cargo.trim(),
+      funcao_opcional: novoColaborador.funcao_opcional || null,
+      observacoes_contrato: novoColaborador.observacoes_contrato || null,
+      data_afastamento: novoColaborador.data_afastamento || null,
+      endereco: novoColaborador.endereco || null,
+      setor_id: novoColaborador.setor_id ? parseInt(novoColaborador.setor_id, 10) : null,
       is_motorista: Boolean(novoColaborador.is_motorista),
       tipo_veiculo: novoColaborador.is_motorista ? novoColaborador.tipo_veiculo : null,
       cnh_numero: novoColaborador.is_motorista ? novoColaborador.cnh_numero : null,
@@ -262,263 +275,286 @@ export default function Colaboradores() {
       status: novoColaborador.status || 'Ativo'
     };
 
+    setSalvando(true);
     try {
       if (editingId) {
-        await api.put(`/api/colaboradores/${editingId}`, payload);
+        await api.put(`/colaboradores/${editingId}`, payload);
       } else {
-        await api.post('/api/colaboradores', payload);
+        await api.post('/colaboradores', payload);
       }
 
       setModalColaboradorOpen(false);
       setEditingId(null);
       setNovoColaborador(estadoInicialColaborador);
       carregarDados();
-      alert("Salvo com sucesso!");
     } catch (err) {
-      console.error("Erro detalhado no salvamento:", err.response || err);
-      alert("Erro ao salvar colaborador: " + (err.response?.data?.detail || err.message));
+      console.error('Erro detalhado no salvamento:', err.response || err);
+      alert('Erro ao salvar colaborador: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setSalvando(false);
     }
   };
 
   const handleCadastrarSetor = async (e) => {
     e.preventDefault();
     if (!novoSetor.nome.trim()) {
-      alert("O nome do setor é obrigatório.");
+      alert('O nome do setor é obrigatório.');
       return;
     }
-
     try {
-      const payload = {
-        nome: novoSetor.nome.trim(),
-        descricao: novoSetor.descricao ? novoSetor.descricao.trim() : ""
-      };
-
-      await api.post('/api/setores', payload, {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
+      await api.post('/setores', novoSetor);
       setModalSetorOpen(false);
       setNovoSetor({ nome: '', descricao: '' });
-      await carregarDados();
-      alert("Setor cadastrado com sucesso!");
+      carregarDados();
     } catch (err) {
-      console.error("Erro ao cadastrar setor:", err.response || err);
-      const mensagemErro = err.response?.data?.detail 
-        ? (Array.isArray(err.response.data.detail) ? err.response.data.detail[0].msg : err.response.data.detail)
-        : err.message;
-      alert("Erro ao cadastrar setor: " + mensagemErro);
+      alert('Erro ao cadastrar setor: ' + (err.response?.data?.detail || err.message));
     }
   };
 
   const colaboradoresExibidos = colaboradores.filter((c) => {
     if (filtroStatus === 'Todos') return true;
-    const statusColab = String(c.status || 'Ativo').toLowerCase();
+    const statusColab = String(c.status || 'ativo').toLowerCase();
     const statusFiltro = String(filtroStatus).toLowerCase();
     return statusColab === statusFiltro;
   });
 
   return (
-    <div className="space-y-6 bg-gray-50 min-h-screen p-4 text-gray-800">
+    <div className="space-y-6 bg-slate-50 min-h-screen p-6 text-slate-800">
       {/* Cabeçalho */}
-      <div className="flex flex-wrap justify-between items-center bg-white p-5 rounded-xl border border-gray-200 shadow-sm gap-4">
-        <h1 className="text-xl font-black text-gray-900 uppercase flex items-center gap-2">
-          <Users className="text-red-600" size={24} /> Gestão de Colaboradores
-        </h1>
+      <div className="flex flex-wrap justify-between items-center bg-white p-5 rounded-xl border border-slate-200 shadow-sm gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 uppercase flex items-center gap-2">
+            <Users className="text-rose-600" size={24} /> Controle de Funcionários
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Total exibido: <strong className="text-slate-700">{colaboradoresExibidos.length}</strong> funcionário(s)
+          </p>
+        </div>
 
         <div className="flex items-center gap-3">
-          <div className="bg-gray-100 p-1 rounded-lg border border-gray-200 flex items-center gap-1">
+          <div className="bg-slate-100 p-1 rounded-lg border border-slate-200 flex items-center gap-1">
             <button
               onClick={() => setFiltroStatus('Ativo')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filtroStatus === 'Ativo' ? 'bg-red-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                filtroStatus === 'Ativo' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:text-slate-900'
+              }`}>
               Ativos
             </button>
             <button
               onClick={() => setFiltroStatus('Inativo')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filtroStatus === 'Inativo' ? 'bg-red-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                filtroStatus === 'Inativo' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:text-slate-900'
+              }`}>
               Inativos / Arquivados
             </button>
             <button
               onClick={() => setFiltroStatus('Todos')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filtroStatus === 'Todos' ? 'bg-red-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                filtroStatus === 'Todos' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:text-slate-900'
+              }`}>
               Todos
             </button>
           </div>
 
           <button
             onClick={() => setModalSetorOpen(true)}
-            className="bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-gray-300 shadow-sm">
+            className="bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-300 shadow-sm">
             <Building2 size={16} /> Cadastrar Setor
           </button>
 
           <button
             onClick={handleAbrirModalNovo}
-            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-sm transition-all">
-            <Plus size={16} /> Novo Colaborador
+            className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center gap-2 shadow transition-all">
+            <Plus size={16} /> Novo Funcionário
           </button>
         </div>
       </div>
 
       {/* Tabela de Colaboradores */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
-          <thead className="bg-gray-100 text-gray-700 font-bold uppercase text-[11px] border-b border-gray-200">
-            <tr>
-              <th className="p-4">Matrícula</th>
-              <th className="p-4">Nome</th>
-              <th className="p-4">CPF</th>
-              <th className="p-4">Função / Cargo</th>
-              <th className="p-4">Setor</th>
-              {filtroStatus === 'Inativo' ? (
-                <>
-                  <th className="p-4">Data Demissão</th>
-                  <th className="p-4">Motivo</th>
-                  <th className="p-4">ASO Demissional</th>
-                </>
-              ) : (
-                <th className="p-4">Detalhes CNH / Veículo</th>
-              )}
-              <th className="p-4">Status</th>
-              <th className="p-4 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {colaboradoresExibidos.length === 0 ? (
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-slate-700">
+            <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[11px] border-b border-slate-200">
               <tr>
-                <td colSpan="8" className="p-4 text-center text-gray-400 text-xs">
-                  Nenhum colaborador encontrado neste filtro.
-                </td>
+                <th className="p-4">Matrícula</th>
+                <th className="p-4">Funcionário</th>
+                <th className="p-4">CPF</th>
+                <th className="p-4">Função / Opcional</th>
+                <th className="p-4">Setor / Equipe</th>
+                <th className="p-4">Observação / Contrato</th>
+                {filtroStatus === 'Inativo' ? (
+                  <>
+                    <th className="p-4">Data Demissão</th>
+                    <th className="p-4">Motivo</th>
+                    <th className="p-4">ASO</th>
+                  </>
+                ) : (
+                  <th className="p-4">CNH / Veículo</th>
+                )}
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Ações</th>
               </tr>
-            ) : (
-              colaboradoresExibidos.map((c) => {
-                const isInativo = c.status === 'Inativo';
-                const nomeSetor = c.setor || c.setor_nome || setores.find(s => s.id === c.setor_id)?.nome || '-';
-                return (
-                  <tr key={c.id} className={`hover:bg-gray-50/80 ${isInativo ? 'bg-gray-50/50' : ''}`}>
-                    <td className="p-4 text-gray-500 font-mono text-xs">{c.matricula || '-'}</td>
-                    <td className="p-4 font-bold text-gray-900">{c.nome}</td>
-                    <td className="p-4 text-gray-500">{c.cpf ? formatarCPF(c.cpf) : '-'}</td>
-                    <td className="p-4 text-gray-700">
-                      {c.cargo || c.funcão || c.funcao}
-                      {c.tipo_veiculo && c.is_motorista && (
-                        <span className="block text-[11px] text-amber-600 font-medium">
-                          ({c.tipo_veiculo})
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 text-gray-600">{nomeSetor}</td>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {colaboradoresExibidos.length === 0 ? (
+                <tr>
+                  <td colSpan="9" className="p-6 text-center text-slate-400 text-xs">
+                    Nenhum funcionário encontrado para este filtro.
+                  </td>
+                </tr>
+              ) : (
+                colaboradoresExibidos.map((c) => {
+                  const isInativo = String(c.status).toLowerCase() === 'inativo';
+                  const nomeSetor = c.setor_nome || setores.find((s) => s.id === c.setor_id)?.nome || '-';
+                  const cargoOuFuncao = c.cargo || '-';
 
-                    {filtroStatus === 'Inativo' ? (
-                      <>
-                        <td className="p-4 text-rose-600 font-mono text-xs">
-                          {c.data_demissao ? new Date(c.data_demissao).toLocaleDateString('pt-BR') : '-'}
-                        </td>
-                        <td className="p-4 text-xs font-semibold text-gray-700">
-                          {c.motivo_demissao || '-'}
-                        </td>
-                        <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${c.aso_demissional_concluido ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                            {c.aso_demissional_concluido ? 'OK / Feito' : 'Pendente'}
+                  return (
+                    <tr key={c.id} className={`hover:bg-slate-50 ${isInativo ? 'bg-slate-50/60 opacity-70' : ''}`}>
+                      <td className="p-4 text-slate-500 font-mono text-xs">{c.matricula || '-'}</td>
+                      <td className="p-4 font-semibold text-slate-900">
+                        {c.nome}
+                        {c.data_admissao && (
+                          <span className="block text-[11px] font-normal text-slate-500">
+                            Adm: {formatarDataExibicao(c.data_admissao)}
                           </span>
-                        </td>
-                      </>
-                    ) : (
-                      <td className="p-4 text-gray-700">
-                        {c.cnh_numero ? (
-                          <span className="flex items-center gap-1.5 text-xs text-amber-700 font-bold">
-                            <Truck size={14} /> Cat. {c.cnh_categoria} - {c.cnh_numero}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
                         )}
                       </td>
-                    )}
-
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${isInativo
-                        ? 'bg-rose-50 text-rose-600 border-rose-200'
-                        : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                        }`}>
-                        {c.status || 'Ativo'}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {isInativo && (
-                          <button
-                            onClick={() => {
-                              setColaboradorDetalhado(c);
-                              setModalDetalhesInativoOpen(true);
-                            }}
-                            title="Ver Detalhes da Demissão"
-                            className="p-1.5 bg-gray-100 hover:bg-gray-200 text-blue-600 rounded-lg transition-colors"
-                          >
-                            <Eye size={14} />
-                          </button>
+                      <td className="p-4 text-slate-600 font-mono text-xs">{c.cpf ? formatarCPF(c.cpf) : '-'}</td>
+                      <td className="p-4 text-slate-800">
+                        <div className="font-medium">{cargoOuFuncao}</div>
+                        {c.funcao_opcional && (
+                          <span className="block text-[11px] text-slate-500 font-normal">
+                            Alt: {c.funcao_opcional}
+                          </span>
                         )}
-                        <button
-                          onClick={() => handleEditar(c)}
-                          title="Editar Colaborador"
-                          className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors"
-                        >
-                          <Edit size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleAcaoStatus(c)}
-                          title={isInativo ? "Reativar Colaborador" : "Desativar (Arquivar)"}
-                          className={`p-1.5 rounded-lg transition-colors ${isInativo
-                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600'
-                            : 'bg-rose-50 hover:bg-rose-100 text-rose-600'
+                      </td>
+                      <td className="p-4 text-slate-600">{nomeSetor}</td>
+                      <td className="p-4 text-xs text-slate-600 max-w-[200px]">
+                        {c.observacoes_contrato || '-'}
+                        {c.data_afastamento && (
+                          <span className="block text-rose-600 font-semibold text-[11px] mt-0.5">
+                            Afastado: {formatarDataExibicao(c.data_afastamento)}
+                          </span>
+                        )}
+                      </td>
+
+                      {filtroStatus === 'Inativo' ? (
+                        <>
+                          <td className="p-4 text-rose-600 font-mono text-xs">
+                            {c.data_demissao ? formatarDataExibicao(c.data_demissao) : '-'}
+                          </td>
+                          <td className="p-4 text-xs font-medium text-slate-700">
+                            {c.motivo_demissao || '-'}
+                          </td>
+                          <td className="p-4">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                c.aso_demissional_concluido
+                                  ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                                  : 'bg-rose-100 text-rose-800 border border-rose-200'
+                              }`}>
+                              {c.aso_demissional_concluido ? 'OK' : 'Pendente'}
+                            </span>
+                          </td>
+                        </>
+                      ) : (
+                        <td className="p-4 text-slate-700">
+                          {c.cnh_numero ? (
+                            <span className="flex items-center gap-1 text-xs text-slate-700 font-semibold">
+                              <Truck size={14} className="text-slate-500" /> Cat. {c.cnh_categoria} - {c.cnh_numero}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+                      )}
+
+                      <td className="p-4">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                            isInativo
+                              ? 'bg-rose-100 text-rose-800 border-rose-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-300'
+                          }`}>
+                          {c.status || 'Ativo'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isInativo && (
+                            <button
+                              onClick={() => {
+                                setColaboradorDetalhado(c);
+                                setModalDetalhesInativoOpen(true);
+                              }}
+                              title="Ver Detalhes"
+                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                              <Eye size={15} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleEditar(c)}
+                            title="Editar"
+                            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                          >
+                            <Edit size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleAcaoStatus(c)}
+                            title={isInativo ? 'Reativar' : 'Desativar'}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              isInativo ? 'text-slate-700 hover:bg-slate-100' : 'text-rose-600 hover:bg-rose-50'
                             }`}
-                        >
-                          {isInativo ? <UserCheck size={14} /> : <UserX size={14} />}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                          >
+                            {isInativo ? <UserCheck size={15} /> : <UserX size={15} />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* MODAL QUESTIONÁRIO DE DESLIGAMENTO */}
+      {/* MODAL DESLIGAMENTO */}
       {modalDesligamentoOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
-          <div className="bg-white border border-gray-200 rounded-xl w-full max-w-lg p-6 space-y-4 shadow-xl">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 space-y-4 shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-rose-600 flex items-center gap-2">
-                <UserX size={20} /> Desligamento de Colaborador
+                <UserX size={20} /> Desligamento de Funcionário
               </h3>
-              <button onClick={() => setModalDesligamentoOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setModalDesligamentoOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
 
-            <p className="text-xs text-gray-600">
-              Você está desativando <strong className="text-gray-900">{colaboradorParaDesligar?.nome}</strong>. Preencha os dados rescisórios abaixo:
+            <p className="text-xs text-slate-600">
+              Você está desativando <strong className="text-slate-900">{colaboradorParaDesligar?.nome}</strong>. Preencha os dados rescisórios:
             </p>
 
             <form onSubmit={handleConfirmarDesligamento} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Data de Demissão / Saída *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Data de Demissão *</label>
                   <input
                     type="date"
                     required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-rose-500"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-rose-500"
                     value={dadosDesligamento.data_demissao}
                     onChange={(e) => setDadosDesligamento({ ...dadosDesligamento, data_demissao: e.target.value })}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Motivo do Desligamento *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Motivo *</label>
                   <select
                     required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-rose-500"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-rose-500"
                     value={dadosDesligamento.motivo_demissao}
                     onChange={(e) => setDadosDesligamento({ ...dadosDesligamento, motivo_demissao: e.target.value })}
                   >
@@ -533,23 +569,23 @@ export default function Colaboradores() {
                 </div>
               </div>
 
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700">
+              <div className="p-3 bg-rose-50 rounded-lg border border-rose-200 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
                   <input
                     type="checkbox"
-                    className="rounded accent-emerald-600 w-4 h-4"
+                    className="rounded accent-rose-600 w-4 h-4"
                     checked={dadosDesligamento.aso_demissional_concluido}
                     onChange={(e) => setDadosDesligamento({ ...dadosDesligamento, aso_demissional_concluido: e.target.checked })}
                   />
-                  <span>ASO Demissional e Exames Realizados/Concluídos?</span>
+                  <span>ASO Demissional Concluído?</span>
                 </label>
 
                 <div>
-                  <label className="block text-[11px] text-gray-500 mb-1">Observações dos Exames (Opcional)</label>
+                  <label className="block text-[11px] text-slate-500 mb-1">Obs. Exames</label>
                   <input
                     type="text"
-                    placeholder="Ex: Apto sem restrições, Exame realizado no lab X..."
-                    className="w-full bg-white border border-gray-300 rounded-lg p-2 text-xs text-gray-800 focus:outline-none focus:border-rose-500"
+                    placeholder="Ex: Apto sem restrições"
+                    className="w-full border border-rose-200 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-rose-500"
                     value={dadosDesligamento.exames_demissionais_obs}
                     onChange={(e) => setDadosDesligamento({ ...dadosDesligamento, exames_demissionais_obs: e.target.value })}
                   />
@@ -557,26 +593,25 @@ export default function Colaboradores() {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-600 mb-1 font-medium">Observações do Motivo / Detalhes</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Observações Internas</label>
                 <textarea
                   rows="3"
-                  placeholder="Descreva o motivo detalhado ou observações internas..."
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-rose-500"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-rose-500"
                   value={dadosDesligamento.observacao_demissao}
                   onChange={(e) => setDadosDesligamento({ ...dadosDesligamento, observacao_demissao: e.target.value })}
                 ></textarea>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalDesligamentoOpen(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg">
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg">
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm">
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-sm">
                   Confirmar Desligamento
                 </button>
               </div>
@@ -585,46 +620,42 @@ export default function Colaboradores() {
         </div>
       )}
 
-      {/* MODAL DETALHES DE COLABORADOR INATIVO */}
+      {/* MODAL DETALHES INATIVO */}
       {modalDetalhesInativoOpen && colaboradorDetalhado && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
-          <div className="bg-white border border-gray-200 rounded-xl w-full max-w-lg p-6 space-y-4 shadow-xl">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <FileText className="text-blue-600" size={20} /> Histórico Rescisório
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 space-y-4 shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="text-rose-600" size={20} /> Histórico do Funcionário
               </h3>
-              <button onClick={() => setModalDetalhesInativoOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setModalDetalhesInativoOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-gray-600">
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-sm font-bold text-gray-900 mb-1">{colaboradorDetalhado.nome}</p>
-                <p><strong>Cargo:</strong> {colaboradorDetalhado.cargo || colaboradorDetalhado.funcão || colaboradorDetalhado.funcao}</p>
+            <div className="space-y-3 text-xs text-slate-700">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="text-sm font-bold text-slate-900 mb-1">{colaboradorDetalhado.nome}</p>
+                <p><strong>Cargo:</strong> {colaboradorDetalhado.cargo || '-'}</p>
                 <p><strong>CPF:</strong> {colaboradorDetalhado.cpf ? formatarCPF(colaboradorDetalhado.cpf) : '-'}</p>
-                <p><strong>Data Admissão:</strong> {colaboradorDetalhado.data_admissao ? new Date(colaboradorDetalhado.data_admissao).toLocaleDateString('pt-BR') : '-'}</p>
+                <p><strong>Admissão:</strong> {colaboradorDetalhado.data_admissao ? formatarDataExibicao(colaboradorDetalhado.data_admissao) : '-'}</p>
               </div>
 
-              <div className="p-3 bg-rose-50/50 rounded-lg border border-rose-100 space-y-1.5">
-                <p className="text-rose-700 font-bold">Informações da Demissão</p>
-                <p><strong>Data de Saída:</strong> {colaboradorDetalhado.data_demissao ? new Date(colaboradorDetalhado.data_demissao).toLocaleDateString('pt-BR') : '-'}</p>
+              <div className="p-3 bg-rose-50 rounded-lg border border-rose-200 space-y-1">
+                <p className="text-rose-800 font-bold">Informações do Desligamento</p>
+                <p><strong>Data de Saída:</strong> {colaboradorDetalhado.data_demissao ? formatarDataExibicao(colaboradorDetalhado.data_demissao) : '-'}</p>
                 <p><strong>Motivo:</strong> {colaboradorDetalhado.motivo_demissao || '-'}</p>
-                <p><strong>Observações:</strong> {colaboradorDetalhado.observacao_demissao || 'Nenhuma observação informada.'}</p>
-              </div>
-
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1.5">
-                <p className="text-amber-700 font-bold">Exames e ASO Demissional</p>
-                <p><strong>Status ASO:</strong> {colaboradorDetalhado.aso_demissional_concluido ? '✅ Concluído / Apto' : '❌ Pendente'}</p>
-                <p><strong>Obs. Exames:</strong> {colaboradorDetalhado.exames_demissionais_obs || '-'}</p>
+                <p><strong>ASO Demissional:</strong> {colaboradorDetalhado.aso_demissional_concluido ? 'Concluído' : 'Pendente'}</p>
+                <p><strong>Obs. Exames:</strong> {colaboradorDetalhado.exames_demissionais_obs || 'Nenhuma.'}</p>
+                <p><strong>Observações:</strong> {colaboradorDetalhado.observacao_demissao || 'Nenhuma.'}</p>
               </div>
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-gray-100">
+            <div className="flex justify-end pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setModalDetalhesInativoOpen(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg">
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg">
                 Fechar
               </button>
             </div>
@@ -632,15 +663,15 @@ export default function Colaboradores() {
         </div>
       )}
 
-      {/* MODAL CADASTRAR/EDITAR COLABORADOR */}
+      {/* MODAL CADASTRAR / EDITAR FUNCIONÁRIO */}
       {modalColaboradorOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
-          <div className="bg-white border border-gray-200 rounded-xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-xl">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-              <h3 className="text-lg font-bold text-gray-900">
-                {editingId ? 'Editar Colaborador' : 'Cadastrar Novo Colaborador'}
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-900">
+                {editingId ? 'Editar Funcionário' : 'Cadastrar Novo Funcionário'}
               </h3>
-              <button onClick={() => setModalColaboradorOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setModalColaboradorOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
@@ -648,23 +679,23 @@ export default function Colaboradores() {
             <form onSubmit={handleCadastrarColaborador} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Nome Completo *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nome Completo *</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: Carlos Silva"
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                    placeholder="Ex: Emerson Luan Ribeiro"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                     value={novoColaborador.nome}
                     onChange={(e) => setNovoColaborador({ ...novoColaborador, nome: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Matrícula *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Matrícula *</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: MAT-001"
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                    placeholder="Ex: 540"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                     value={novoColaborador.matricula}
                     onChange={(e) => setNovoColaborador({ ...novoColaborador, matricula: e.target.value })}
                   />
@@ -673,33 +704,32 @@ export default function Colaboradores() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">CPF *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">CPF *</label>
                   <input
                     type="text"
                     required
                     placeholder="000.000.000-00"
                     maxLength={14}
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600 font-mono"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm font-mono text-slate-800 focus:outline-none focus:border-slate-500"
                     value={novoColaborador.cpf}
                     onChange={handleCPFChange}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Data de Nascimento *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Data de Nascimento</label>
                   <input
                     type="date"
-                    required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                     value={novoColaborador.data_nascimento}
                     onChange={(e) => setNovoColaborador({ ...novoColaborador, data_nascimento: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Data de Admissão *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Data de Admissão *</label>
                   <input
                     type="date"
                     required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                     value={novoColaborador.data_admissao}
                     onChange={(e) => setNovoColaborador({ ...novoColaborador, data_admissao: e.target.value })}
                   />
@@ -708,61 +738,93 @@ export default function Colaboradores() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Função / Cargo *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Função / Cargo *</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: Motorista, Operador..."
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                    placeholder="Ex: Assistente Administrativo"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                     value={novoColaborador.cargo}
                     onChange={(e) => handleCargoChange(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1 font-medium">Setor *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Função Opcional</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Auxiliar de Escritório"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
+                    value={novoColaborador.funcao_opcional}
+                    onChange={(e) => setNovoColaborador({ ...novoColaborador, funcao_opcional: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Setor / Equipe</label>
                   <select
-                    required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                     value={novoColaborador.setor_id}
                     onChange={(e) => setNovoColaborador({ ...novoColaborador, setor_id: e.target.value })}
                   >
-                    <option value="">Selecione um Setor</option>
+                    <option value="">Selecione o Setor</option>
                     {setores.map((s) => (
                       <option key={s.id} value={s.id}>{s.nome}</option>
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Data Afastamento INSS (se houver)</label>
+                  <input
+                    type="date"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
+                    value={novoColaborador.data_afastamento}
+                    onChange={(e) => setNovoColaborador({ ...novoColaborador, data_afastamento: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs text-gray-600 mb-1 font-medium">Endereço Completo</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Endereço</label>
                 <input
                   type="text"
-                  placeholder="Rua, Número, Bairro, Cidade - UF"
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                  placeholder="Ex: Rua das Palmeiras, 123 - Centro"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                   value={novoColaborador.endereco}
                   onChange={(e) => setNovoColaborador({ ...novoColaborador, endereco: e.target.value })}
                 />
               </div>
 
-              {/* SEÇÃO MOTORISTA */}
-              <div className="pt-2 border-t border-gray-100">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 font-bold mb-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Observação / Status do Contrato</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Contrato prorrogado 90 dias ou R$ 267,00 Gratificação"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
+                  value={novoColaborador.observacoes_contrato}
+                  onChange={(e) => setNovoColaborador({ ...novoColaborador, observacoes_contrato: e.target.value })}
+                />
+              </div>
+
+              {/* HABILITAÇÃO MOTORISTA */}
+              <div className="pt-2 border-t border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 mb-3">
                   <input
                     type="checkbox"
-                    className="rounded accent-red-600 w-4 h-4"
+                    className="rounded accent-slate-900 w-4 h-4"
                     checked={novoColaborador.is_motorista}
                     onChange={(e) => setNovoColaborador({ ...novoColaborador, is_motorista: e.target.checked })}
                   />
-                  <span>É Motorista? (Habilita CNH e Especialidade do Veículo)</span>
+                  <span>É Motorista? (Adiciona dados de CNH)</span>
                 </label>
 
                 {novoColaborador.is_motorista && (
-                  <div className="space-y-3 bg-amber-50/50 p-4 rounded-xl border border-amber-200">
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <div>
-                      <label className="block text-xs text-amber-800 mb-1 font-bold">Tipo / Especialidade do Veículo</label>
+                      <label className="block text-xs text-slate-700 mb-1 font-semibold">Tipo do Veículo</label>
                       <select
-                        className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-amber-500"
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                         value={novoColaborador.tipo_veiculo}
                         onChange={(e) => setNovoColaborador({ ...novoColaborador, tipo_veiculo: e.target.value })}
                       >
@@ -770,30 +832,25 @@ export default function Colaboradores() {
                         <option value="Caminhão Pipa">Motorista de Caminhão Pipa</option>
                         <option value="Carreta / Eixo Pesado">Motorista de Carreta / Eixo Pesado</option>
                         <option value="Betoneira">Motorista de Betoneira</option>
-                        <option value="Comboio / Abastecimento">Motorista de Comboio / Abastecimento</option>
-                        <option value="Munck / Guindaste">Motorista de Munck / Guindaste</option>
-                        <option value="Veículo Leve / Van">Motorista de Veículo Leve / Van</option>
                         <option value="Outros">Outros Veículos</option>
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-amber-200/60">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs text-amber-800 mb-1 font-medium">Número da CNH (11 dígitos)</label>
+                        <label className="block text-xs text-slate-700 mb-1 font-semibold">Número CNH</label>
                         <input
                           type="text"
-                          required={novoColaborador.is_motorista}
-                          placeholder="00000000000"
                           maxLength={11}
-                          className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-amber-500 font-mono"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm font-mono text-slate-800 focus:outline-none focus:border-slate-500"
                           value={novoColaborador.cnh_numero}
                           onChange={handleCNHChange}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-amber-800 mb-1 font-medium">Categoria CNH</label>
+                        <label className="block text-xs text-slate-700 mb-1 font-semibold">Categoria</label>
                         <select
-                          className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-amber-500"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                           value={novoColaborador.cnh_categoria}
                           onChange={(e) => setNovoColaborador({ ...novoColaborador, cnh_categoria: e.target.value })}
                         >
@@ -801,18 +858,13 @@ export default function Colaboradores() {
                           <option value="C">C</option>
                           <option value="D">D</option>
                           <option value="E">E</option>
-                          <option value="AB">AB</option>
-                          <option value="AC">AC</option>
-                          <option value="AD">AD</option>
-                          <option value="AE">AE</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-amber-800 mb-1 font-medium">Validade da CNH</label>
+                        <label className="block text-xs text-slate-700 mb-1 font-semibold">Validade CNH</label>
                         <input
                           type="date"
-                          required={novoColaborador.is_motorista}
-                          className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-amber-500"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                           value={novoColaborador.cnh_validade}
                           onChange={(e) => setNovoColaborador({ ...novoColaborador, cnh_validade: e.target.value })}
                         />
@@ -822,17 +874,18 @@ export default function Colaboradores() {
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalColaboradorOpen(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg">
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg">
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm">
-                  {editingId ? 'Atualizar Colaborador' : 'Salvar Colaborador'}
+                  disabled={salvando}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shadow-sm">
+                  {salvando ? 'Salvando...' : editingId ? 'Atualizar' : 'Salvar'}
                 </button>
               </div>
             </form>
@@ -840,53 +893,52 @@ export default function Colaboradores() {
         </div>
       )}
 
-      {/* MODAL CADASTRAR SETOR */}
+      {/* MODAL NOVO SETOR */}
       {modalSetorOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
-          <div className="bg-white border border-gray-200 rounded-xl w-full max-w-md p-6 space-y-4 shadow-xl">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Building2 size={20} className="text-red-600" /> Cadastrar Novo Setor
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 space-y-4 shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Building2 size={20} className="text-slate-700" /> Cadastrar Novo Setor
               </h3>
-              <button onClick={() => setModalSetorOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setModalSetorOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
 
             <form onSubmit={handleCadastrarSetor} className="space-y-4">
               <div>
-                <label className="block text-xs text-gray-600 mb-1 font-medium">Nome do Setor *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Nome do Setor / Equipe *</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Logística, Produção, RH"
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                  placeholder="Ex: Administração, Oficina das Máquinas, Equipe Asfalto"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                   value={novoSetor.nome}
                   onChange={(e) => setNovoSetor({ ...novoSetor, nome: e.target.value })}
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-gray-600 mb-1 font-medium">Descrição / Observação</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Descrição</label>
                 <textarea
                   rows="3"
-                  placeholder="Descrição opcional..."
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:border-red-600"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:border-slate-500"
                   value={novoSetor.descricao}
                   onChange={(e) => setNovoSetor({ ...novoSetor, descricao: e.target.value })}
                 ></textarea>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalSetorOpen(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg">
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg">
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm">
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm">
                   Salvar Setor
                 </button>
               </div>

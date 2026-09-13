@@ -1,53 +1,36 @@
-# PLANNA – Gestão Local de Funcionários & SST
+# 🚀 PLANNA RH & SST — Gestão de Pessoas e Segurança do Trabalho
 
-Aplicação web desacoplada com backend em Python (FastAPI), frontend reativo em React (Vite + Tailwind CSS) e banco SQLite local (planna_dados.db).
+> **Projeto em Desenvolvimento**
 
----
-
-## Estrutura de Pastas
-
-planna_sistema/
-├── BACKEND/
-│   ├── main.py
-│   └── planna_dados.db
-└── FRONTEND/
-    ├── src/
-    │   ├── components/
-    │   ├── services/
-    │   │   └── api.js
-    │   ├── App.jsx
-    │   └── main.jsx
-    ├── package.json
-    └── vite.config.js
+Aplicação web desacoplada para gestão de Recursos Humanos e SST com backend em **FastAPI**, frontend reativo em **React (Vite + Tailwind CSS)** usando a nova identidade visual **Slate/Rose**, e banco de dados **SQLite** local.
 
 ---
 
-## Como Executar
+## 💻 Como Executar
 
-1. Backend (Terminal 1)
-
-cd BACKEND
+### 1️⃣ Backend (FastAPI)
+```powershell
+cd backend
 python -m uvicorn main:app --reload --port 8000
+```
+- **API Base:** `http://localhost:8000/api` | **Docs:** `http://localhost:8000/docs`
 
-* API: http://localhost:8000/api
-* Docs: http://localhost:8000/docs
-
-2. Frontend (Terminal 2)
-
-cd FRONTEND
+### 2️⃣ Frontend (React)
+```powershell
+cd frontend
 npm install
 npm run dev
-
-* App Web: http://localhost:5173
-
----
-
-## Funcionalidades
-
-* Colaboradores: Cadastro, edição, demissão e gestão de motoristas (CNH e veículos).
-* Setores: Cadastro e organização por departamentos.
-* EPIs: Controle de estoque com baixa automática na entrega.
-* PCMSO / ASO: Registro e controle de vencimento de exames.
-* Pendências: Alertas automáticos para exames a vencer e estoque baixo.
+```
+- **App Web:** `http://localhost:5173`
 
 ---
+
+## 📌 Funcionalidades
+
+* **Dashboard:** KPIs em tempo real e gráficos por setor.
+* **Colaboradores:** Gestão de cadastros, cargos, setores e CNH.
+* **EPIs & Estoque:** Controle de movimentação, CA e baixa automática.
+* **PCMSO / ASOs:** Controle de exames por função e Matriz PGR.
+* **Ocorrências / SST:** Registro de incidentes com severidade e status (Pendente/Resolvido).
+* **Central de Pendências:** Alertas automáticos de exames a vencer e estoque crítico.
+* **Relatórios & Configurações:** Emissão de dados operacionais e parâmetros globais.

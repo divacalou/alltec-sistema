@@ -1,40 +1,21 @@
-/**
- * App.jsx — casco principal do sistema Planna RH & SST.
- *
- * NOTA IMPORTANTE: o arquivo App.jsx original não foi enviado junto com os
- * demais arquivos do projeto, então este arquivo foi reconstruído do zero
- * com base nos padrões já confirmados no restante do código:
- *   - Navegação 100% por estado local (activeTab/setActiveTab), sem
- *     react-router-dom (não há essa dependência no package.json e nenhum
- *     arquivo usa <Routes>/<Route>).
- *   - Sidebar.jsx e RightSidebar.jsx moram em `src/components/`.
- *   - As telas (Colaboradores, Epis, Pcmso, SstOcorrencias, Pendencias,
- *     Relatorios, Configuracoes) importam `../services/api`, o que indica
- *     que vivem em `src/pages/` e o api.js em `src/services/api.js`.
- *
- * Se a estrutura de pastas real do seu projeto for diferente, ajuste apenas
- * os caminhos dos imports abaixo — a lógica de navegação permanece a mesma.
- */
 import React, { useEffect, useState } from 'react';
 import { LayoutDashboard } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
-import RightSidebar from './components/RightSidebar';
+import { RightSidebar } from './components/RightSidebar'; // Ajustado com chaves
 import KpiCards from './components/KpiCards';
 import DashboardCharts from './components/DashboardCharts';
 
-import Colaboradores from './pages/Colaboradores';
-import Epis from './pages/Epis';
-import Pcmso from './pages/Pcmso';
-import SstOcorrencias from './pages/SstOcorrencias';
-import Pendencias from './pages/Pendencias';
-import Relatorios from './pages/Relatorios';
-import Configuracoes from './pages/Configuracoes';
+import Colaboradores from "./components/Colaboradores";
+import Epis from "./components/Epis";
+import Pcmso from "./components/Pcmso";
+import SstOcorrencias from "./components/SstOcorrencias";
+import Pendencias from "./components/Pendencias";
+import Relatorios from "./components/Relatorios";
+import Configuracoes from "./components/Configuracoes";
 
-import { api } from './services/api';
+import api from './services/api';
 
-// Chaves que precisam bater exatamente com os `id` definidos em
-// src/components/Sidebar.jsx — se adicionar uma tela nova, registre aqui também.
 const ABAS_VALIDAS = [
   'dashboard',
   'colaboradores',
@@ -69,9 +50,6 @@ export default function App() {
     }
   };
 
-  // Garantia extra: se por algum motivo activeTab vier com uma chave que não
-  // existe mais (ex.: versão antiga salva em algum lugar), cai no dashboard
-  // em vez de deixar a tela em branco.
   const abaAtual = ABAS_VALIDAS.includes(activeTab) ? activeTab : 'dashboard';
 
   const renderConteudo = () => {
@@ -111,9 +89,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar activeTab={abaAtual} setActiveTab={setActiveTab} />
-
       <main className="flex-1 overflow-y-auto">{renderConteudo()}</main>
-
       {abaAtual === 'dashboard' && <RightSidebar />}
     </div>
   );

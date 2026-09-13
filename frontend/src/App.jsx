@@ -1,109 +1,120 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import * as SidebarModule from './components/Sidebar';
-import * as KpiCardsModule from './components/KpiCards';
-import * as DashboardChartsModule from './components/DashboardCharts';
-import * as ColaboradoresModule from './components/Colaboradores';
-import SstOcorrencias from './components/SstOcorrencias';
+/**
+ * App.jsx — casco principal do sistema Planna RH & SST.
+ *
+ * NOTA IMPORTANTE: o arquivo App.jsx original não foi enviado junto com os
+ * demais arquivos do projeto, então este arquivo foi reconstruído do zero
+ * com base nos padrões já confirmados no restante do código:
+ *   - Navegação 100% por estado local (activeTab/setActiveTab), sem
+ *     react-router-dom (não há essa dependência no package.json e nenhum
+ *     arquivo usa <Routes>/<Route>).
+ *   - Sidebar.jsx e RightSidebar.jsx moram em `src/components/`.
+ *   - As telas (Colaboradores, Epis, Pcmso, SstOcorrencias, Pendencias,
+ *     Relatorios, Configuracoes) importam `../services/api`, o que indica
+ *     que vivem em `src/pages/` e o api.js em `src/services/api.js`.
+ *
+ * Se a estrutura de pastas real do seu projeto for diferente, ajuste apenas
+ * os caminhos dos imports abaixo — a lógica de navegação permanece a mesma.
+ */
+import React, { useEffect, useState } from 'react';
+import { LayoutDashboard } from 'lucide-react';
 
-// Módulos das novas páginas
-import Epis from './components/Epis';
-import Pcmso from './components/Pcmso';
-import Pendencias from './components/Pendencias';
-import Relatorios from './components/Relatorios';
-import Configuracoes from './components/Configuracoes';
+import Sidebar from './components/Sidebar';
+import RightSidebar from './components/RightSidebar';
+import KpiCards from './components/KpiCards';
+import DashboardCharts from './components/DashboardCharts';
 
-const Sidebar = SidebarModule.default || SidebarModule.Sidebar;
-const KpiCards = KpiCardsModule.default || KpiCardsModule.KpiCards;
-const DashboardCharts = DashboardChartsModule.default || DashboardChartsModule.DashboardCharts;
-const Colaboradores = ColaboradoresModule.default || ColaboradoresModule.Colaboradores;
+import Colaboradores from './pages/Colaboradores';
+import Epis from './pages/Epis';
+import Pcmso from './pages/Pcmso';
+import SstOcorrencias from './pages/SstOcorrencias';
+import Pendencias from './pages/Pendencias';
+import Relatorios from './pages/Relatorios';
+import Configuracoes from './pages/Configuracoes';
+
+import { api } from './services/api';
+
+// Chaves que precisam bater exatamente com os `id` definidos em
+// src/components/Sidebar.jsx — se adicionar uma tela nova, registre aqui também.
+const ABAS_VALIDAS = [
+  'dashboard',
+  'colaboradores',
+  'epis',
+  'pcmso',
+  'ocorrencias',
+  'pendencias',
+  'relatorios',
+  'configuracoes'
+];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [kpis, setKpis] = useState({
-    total_colaboradores: 0,
-    admissoes_mes: 0,
-    afastamentos_mes: 0,
-    ocorrencias_mes: 0
-  });
+  const [kpis, setKpis] = useState(null);
+  const [loadingKpis, setLoadingKpis] = useState(false);
 
   useEffect(() => {
-    fetchKpis();
-  }, []);
+    if (activeTab === 'dashboard') {
+      carregarKpis();
+    }
+  }, [activeTab]);
 
-  const fetchKpis = async () => {
+  const carregarKpis = async () => {
+    setLoadingKpis(true);
     try {
-      const response = await axios.get('http://localhost:8000/api/kpis');
-      setKpis(response.data);
-    } catch (error) {
-      console.error('Erro ao carregar KPIs do backend:', error);
+      const res = await api.get('/kpis');
+      setKpis(res.data);
+    } catch (err) {
+      console.error('Erro ao carregar KPIs do dashboard:', err);
+    } finally {
+      setLoadingKpis(false);
+    }
+  };
+
+  // Garantia extra: se por algum motivo activeTab vier com uma chave que não
+  // existe mais (ex.: versão antiga salva em algum lugar), cai no dashboard
+  // em vez de deixar a tela em branco.
+  const abaAtual = ABAS_VALIDAS.includes(activeTab) ? activeTab : 'dashboard';
+
+  const renderConteudo = () => {
+    switch (abaAtual) {
+      case 'dashboard':
+        return (
+          <div className="space-y-6 bg-slate-50 min-h-screen p-6 text-slate-800">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <LayoutDashboard className="text-rose-600" size={24} /> Dashboard Geral
+              </h1>
+              <p className="text-xs text-slate-500 mt-1">Visão consolidada de RH e SST em tempo real.</p>
+            </div>
+            <KpiCards kpis={kpis} loading={loadingKpis} />
+            <DashboardCharts />
+          </div>
+        );
+      case 'colaboradores':
+        return <Colaboradores />;
+      case 'epis':
+        return <Epis />;
+      case 'pcmso':
+        return <Pcmso />;
+      case 'ocorrencias':
+        return <SstOcorrencias />;
+      case 'pendencias':
+        return <Pendencias />;
+      case 'relatorios':
+        return <Relatorios />;
+      case 'configuracoes':
+        return <Configuracoes />;
+      default:
+        return null;
     }
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 text-gray-800 overflow-hidden font-sans">
-      {/* Menu Lateral com a nova identidade */}
-      {Sidebar && <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />}
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
+      <Sidebar activeTab={abaAtual} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
-        <header className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200 shadow-sm">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-              Planna <span className="text-red-600">RH</span>
-            </h1>
-            <p className="text-xs text-gray-500">Gestão de Pessoas & Segurança do Trabalho</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-sm font-semibold text-gray-700">Diva Calou</span>
-          </div>
-        </header>
+      <main className="flex-1 overflow-y-auto">{renderConteudo()}</main>
 
-        <main className="flex-1 p-8 bg-gray-50">
-          {/* Dashboard */}
-          {(activeTab === 'dashboard' || activeTab === 'Dashboard') && (
-            <div className="space-y-6">
-              {KpiCards && <KpiCards kpis={kpis} />}
-              {DashboardCharts && <DashboardCharts />}
-            </div>
-          )}
-
-          {/* Colaboradores */}
-          {(activeTab === 'colaboradores' || activeTab === 'Colaboradores') && Colaboradores && (
-            <Colaboradores />
-          )}
-
-          {/* Entrega de EPIs / SST */}
-          {(activeTab === 'sst' || activeTab === 'Entrega de EPIs' || activeTab === 'ocorrencias') && (
-            <SstOcorrencias />
-          )}
-
-          {/* Estoque de EPIs */}
-          {(activeTab === 'epis' || activeTab === 'Estoque de EPIs') && (
-            <Epis />
-          )}
-
-          {/* PCMSO / Exames */}
-          {(activeTab === 'pcmso' || activeTab === 'medicina' || activeTab === 'PCMSO / ASOs') && (
-            <Pcmso />
-          )}
-
-          {/* Central de Pendências */}
-          {(activeTab === 'pendencias' || activeTab === 'Central de Pendências') && (
-            <Pendencias />
-          )}
-
-          {/* Relatórios */}
-          {(activeTab === 'relatorios' || activeTab === 'Relatórios') && (
-            <Relatorios />
-          )}
-
-          {/* Configurações */}
-          {(activeTab === 'configuracoes' || activeTab === 'Configurações') && (
-            <Configuracoes />
-          )}
-        </main>
-      </div>
+      {abaAtual === 'dashboard' && <RightSidebar />}
     </div>
   );
 }

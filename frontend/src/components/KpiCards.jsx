@@ -1,68 +1,68 @@
 import React from 'react';
 import { Users, UserPlus, UserMinus, AlertTriangle } from 'lucide-react';
 
-export function KpiCards({ kpis }) {
+export function KpiCards({ kpis, loading }) {
+  const valor = (campo) => {
+    if (loading || !kpis) return '—';
+    return kpis[campo] ?? 0;
+  };
+
   const cards = [
     {
       title: 'Total de Colaboradores',
-      value: kpis?.total_colaboradores || 0,
-      badge: '+2%',
+      value: valor('total_colaboradores'),
       subtitle: 'ativos na empresa',
       icon: Users,
-      iconColor: 'text-red-600',
-      borderColor: 'border-l-4 border-l-red-600'
+      alerta: false
     },
     {
       title: 'Admissões (mês)',
-      value: kpis?.admissoes_mes || 0,
-      badge: '+50%',
-      subtitle: 'novos colaboradores',
+      value: valor('admissoes_mes'),
+      subtitle: 'novos colaboradores este mês',
       icon: UserPlus,
-      iconColor: 'text-emerald-600',
-      borderColor: 'border-l-4 border-l-emerald-600'
+      alerta: false
     },
     {
       title: 'Afastamentos (mês)',
-      value: kpis?.afastamentos_mes || 0,
-      badge: '-33%',
-      subtitle: 'licenças médicas',
+      value: valor('afastamentos_mes'),
+      subtitle: 'desligamentos registrados este mês',
       icon: UserMinus,
-      iconColor: 'text-amber-600',
-      borderColor: 'border-l-4 border-l-amber-500'
+      alerta: Number(kpis?.afastamentos_mes || 0) > 0
     },
     {
       title: 'Ocorrências (mês)',
-      value: kpis?.ocorrencias_mes || 0,
-      badge: '-44%',
-      subtitle: 'registradas',
+      value: valor('ocorrencias_mes'),
+      subtitle: 'registradas este mês',
       icon: AlertTriangle,
-      iconColor: 'text-gray-800',
-      borderColor: 'border-l-4 border-l-gray-800'
+      alerta: Number(kpis?.ocorrencias_mes || 0) > 0
     }
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card, index) => {
-        const IconComponent = card.icon;
+        const Icon = card.icon;
         return (
           <div
             key={index}
-            className={`bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow ${card.borderColor}`}
+            className={`bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow p-4 border-l-4 ${
+              card.alerta ? 'border-l-rose-600' : 'border-l-slate-900'
+            }`}
           >
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">{card.title}</p>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-3xl font-extrabold text-gray-900">{card.value}</span>
-                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{card.badge}</span>
-                </div>
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className={`p-2 rounded-lg shrink-0 ${card.alerta ? 'bg-rose-50' : 'bg-slate-100'}`}>
+                <Icon className={card.alerta ? 'text-rose-600' : 'text-slate-600'} size={18} />
               </div>
-              <div className="p-2.5 bg-gray-50 rounded-lg">
-                <IconComponent className={card.iconColor} size={22} />
-              </div>
+              <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wide leading-tight">
+                {card.title}
+              </p>
             </div>
-            <p className="text-gray-400 text-xs mt-3">{card.subtitle}</p>
+
+            <span className={`block text-3xl font-extrabold leading-none ${card.alerta ? 'text-rose-600' : 'text-slate-900'}`}>
+              {card.value}
+            </span>
+
+            <p className="text-slate-400 text-xs mt-2 leading-snug">{card.subtitle}</p>
           </div>
         );
       })}

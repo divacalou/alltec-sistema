@@ -45,17 +45,15 @@ export function KpiCards({ kpis, loading }) {
         return (
           <div
             key={index}
-            className={`bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow p-4 border-l-4 ${
-              card.alerta ? 'border-l-rose-600' : 'border-l-slate-900'
-            }`}
+            className="bg-white rounded-2xl p-5 border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow"
           >
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className={`p-2 rounded-lg shrink-0 ${card.alerta ? 'bg-rose-50' : 'bg-slate-100'}`}>
-                <Icon className={card.alerta ? 'text-rose-600' : 'text-slate-600'} size={18} />
-              </div>
-              <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wide leading-tight">
+            <div className="flex items-start justify-between mb-4">
+              <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wide leading-tight max-w-[68%]">
                 {card.title}
               </p>
+              <div className="bg-rose-50 text-rose-600 p-2.5 rounded-xl shrink-0">
+                <Icon size={18} />
+              </div>
             </div>
 
             <span className={`block text-3xl font-extrabold leading-none ${card.alerta ? 'text-rose-600' : 'text-slate-900'}`}>

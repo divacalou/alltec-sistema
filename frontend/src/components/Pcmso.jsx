@@ -15,7 +15,9 @@ import {
   RefreshCw,
   ClipboardList,
   Info,
-  Search
+  Search,
+  Paperclip,
+  Bot
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -37,7 +39,8 @@ const estadoInicialAso = {
   data_exame: new Date().toISOString().split('T')[0],
   resultado: 'Apto',
   medico_crm: '',
-  observacoes: ''
+  observacoes: '',
+  arquivo_aso: null
 };
 
 const estadoInicialFuncao = {
@@ -47,7 +50,8 @@ const estadoInicialFuncao = {
   grau_insalubridade: 'Médio (20%)',
   tem_periculosidade: false,
   percentual_periculosidade: 30,
-  observacoes: ''
+  observacoes: '',
+  arquivo_pgr: null
 };
 
 const estadoInicialExame = {
@@ -90,6 +94,7 @@ export default function Pcmso() {
 
   const [loadingAsos, setLoadingAsos] = useState(false);
   const [loadingMatriz, setLoadingMatriz] = useState(false);
+  const [loadingIa, setLoadingIa] = useState(false);
 
   // --- Filtros da aba ASOs ---
   const [busca, setBusca] = useState('');
@@ -157,7 +162,7 @@ export default function Pcmso() {
   };
 
   // ----------------------------------------------------------------------
-  // MODAL LANÇAR ASO — automação PGR/PCMSO
+  // MODAL LANÇAR ASO — automação PGR/PCMSO e IA
   // ----------------------------------------------------------------------
   const resetAsoForm = () => {
     setAsoForm(estadoInicialAso);
@@ -195,8 +200,28 @@ export default function Pcmso() {
     }
   };
 
-  // Sempre que a matriz carregada ou o tipo de ASO mudar, reconstrói a lista de
-  // exames sugeridos, marcando como selecionados os que se aplicam àquele tipo.
+  const consultarIaParaAso = async () => {
+    if (!matrizFuncaoAtual?.id) {
+      alert("Selecione um colaborador com função vinculada ao PGR para analisar os riscos com a IA.");
+      return;
+    }
+
+    setLoadingIa(true);
+    try {
+      const res = await api.post(`/ia/analisar-pgr/${matrizFuncaoAtual.id}`);
+      if (res.data?.analise_ia) {
+        setAsoForm((prev) => ({
+          ...prev,
+          observacoes: `[Parecer IA Ollama]:\n${res.data.analise_ia}\n\n${prev.observacoes}`
+        }));
+      }
+    } catch (err) {
+      alert('Erro ao consultar IA: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setLoadingIa(false);
+    }
+  };
+
   useEffect(() => {
     if (!matrizFuncaoAtual || !Array.isArray(matrizFuncaoAtual.exames)) {
       setExamesSelecionados([]);
@@ -210,7 +235,6 @@ export default function Pcmso() {
       origemMatriz: true
     }));
     setExamesSelecionados(selecionados);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matrizFuncaoAtual, asoForm.tipo_exame]);
 
   const toggleExameSelecionado = (index) => {
@@ -271,24 +295,29 @@ export default function Pcmso() {
         periodicidade_meses: ex.periodicidade_meses ? Number(ex.periodicidade_meses) : null
       }));
 
-    const payload = {
-      colaborador_id: Number(asoForm.colaborador_id),
-      tipo_exame: asoForm.tipo_exame,
-      data_exame: asoForm.data_exame,
-      resultado: asoForm.resultado,
-      medico_crm: asoForm.medico_crm || null,
-      observacoes: asoForm.observacoes || null,
-      funcao_pgr_id: matrizFuncaoAtual?.id || null,
-      tem_insalubridade: Boolean(matrizFuncaoAtual?.tem_insalubridade),
-      grau_insalubridade: matrizFuncaoAtual?.grau_insalubridade || null,
-      tem_periculosidade: Boolean(matrizFuncaoAtual?.tem_periculosidade),
-      percentual_periculosidade: matrizFuncaoAtual?.percentual_periculosidade || null,
-      exames_realizados: examesParaEnviar
-    };
+    const formData = new FormData();
+    formData.append('colaborador_id', Number(asoForm.colaborador_id));
+    formData.append('tipo_exame', asoForm.tipo_exame);
+    formData.append('data_exame', asoForm.data_exame);
+    formData.append('resultado', asoForm.resultado);
+    if (asoForm.medico_crm) formData.append('medico_crm', asoForm.medico_crm);
+    if (asoForm.observacoes) formData.append('observacoes', asoForm.observacoes);
+    if (matrizFuncaoAtual?.id) formData.append('funcao_pgr_id', matrizFuncaoAtual.id);
+    formData.append('tem_insalubridade', Boolean(matrizFuncaoAtual?.tem_insalubridade));
+    if (matrizFuncaoAtual?.grau_insalubridade) formData.append('grau_insalubridade', matrizFuncaoAtual.grau_insalubridade);
+    formData.append('tem_periculosidade', Boolean(matrizFuncaoAtual?.tem_periculosidade));
+    if (matrizFuncaoAtual?.percentual_periculosidade) formData.append('percentual_periculosidade', matrizFuncaoAtual.percentual_periculosidade);
+    formData.append('exames_realizados', JSON.stringify(examesParaEnviar));
+
+    if (asoForm.arquivo_aso) {
+      formData.append('arquivo_aso', asoForm.arquivo_aso);
+    }
 
     setSalvandoAso(true);
     try {
-      await api.post('/pcmso/exames', payload);
+      await api.post('/pcmso/exames', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       setModalAsoOpen(false);
       resetAsoForm();
       carregarAsos();
@@ -322,7 +351,8 @@ export default function Pcmso() {
       grau_insalubridade: funcao.grau_insalubridade || 'Médio (20%)',
       tem_periculosidade: Boolean(funcao.tem_periculosidade),
       percentual_periculosidade: funcao.percentual_periculosidade || 30,
-      observacoes: funcao.observacoes || ''
+      observacoes: funcao.observacoes || '',
+      arquivo_pgr: null
     });
     setModalFuncaoOpen(true);
   };
@@ -334,21 +364,25 @@ export default function Pcmso() {
       return;
     }
 
-    const payload = {
-      nome_funcao: funcaoForm.nome_funcao.trim(),
-      riscos_identificados: funcaoForm.riscos_identificados || null,
-      tem_insalubridade: funcaoForm.tem_insalubridade,
-      grau_insalubridade: funcaoForm.tem_insalubridade ? funcaoForm.grau_insalubridade : null,
-      tem_periculosidade: funcaoForm.tem_periculosidade,
-      percentual_periculosidade: funcaoForm.tem_periculosidade ? Number(funcaoForm.percentual_periculosidade) : null,
-      observacoes: funcaoForm.observacoes || null
-    };
+    const formData = new FormData();
+    formData.append('nome_funcao', funcaoForm.nome_funcao.trim());
+    if (funcaoForm.riscos_identificados) formData.append('riscos_identificados', funcaoForm.riscos_identificados);
+    formData.append('tem_insalubridade', funcaoForm.tem_insalubridade);
+    if (funcaoForm.tem_insalubridade) formData.append('grau_insalubridade', funcaoForm.grau_insalubridade);
+    formData.append('tem_periculosidade', funcaoForm.tem_periculosidade);
+    if (funcaoForm.tem_periculosidade) formData.append('percentual_periculosidade', Number(funcaoForm.percentual_periculosidade));
+    if (funcaoForm.observacoes) formData.append('observacoes', funcaoForm.observacoes);
+    if (funcaoForm.arquivo_pgr) formData.append('arquivo_pgr', funcaoForm.arquivo_pgr);
 
     try {
       if (editingFuncaoId) {
-        await api.put(`/pgr/funcoes/${editingFuncaoId}`, payload);
+        await api.put(`/pgr/funcoes/${editingFuncaoId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       } else {
-        await api.post('/pgr/funcoes', payload);
+        await api.post('/pgr/funcoes', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       }
       setModalFuncaoOpen(false);
       setEditingFuncaoId(null);
@@ -920,9 +954,23 @@ export default function Pcmso() {
                 </div>
               ) : matrizFuncaoAtual ? (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-                  <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <ShieldAlert size={14} className="text-slate-500" /> Riscos da função: {matrizFuncaoAtual.nome_funcao}
-                  </p>
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <ShieldAlert size={14} className="text-slate-500" /> Riscos da função: {matrizFuncaoAtual.nome_funcao}
+                    </p>
+
+                    {/* BOTÃO DA INTELIGÊNCIA ARTIFICIAL */}
+                    <button
+                      type="button"
+                      onClick={consultarIaParaAso}
+                      disabled={loadingIa}
+                      className="text-[11px] bg-purple-600 hover:bg-purple-700 text-white font-bold px-2.5 py-1 rounded-md flex items-center gap-1 shadow-sm transition-all disabled:opacity-50"
+                    >
+                      <Bot size={13} className={loadingIa ? 'animate-spin' : ''} />
+                      {loadingIa ? 'Analisando...' : 'Analisar com IA'}
+                    </button>
+                  </div>
+
                   {matrizFuncaoAtual.riscos_identificados && (
                     <p className="text-xs text-slate-600">{matrizFuncaoAtual.riscos_identificados}</p>
                   )}
@@ -1045,6 +1093,19 @@ export default function Pcmso() {
                     onChange={(e) => setAsoForm({ ...asoForm, medico_crm: e.target.value })}
                   />
                 </div>
+              </div>
+
+              {/* CAMPO DE ANEXO DO ASO (PDF / Imagem) */}
+              <div>
+                <label className=" text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                  <Paperclip size={14} /> Anexar Documento do ASO (PDF / Imagem)
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="w-full text-xs text-slate-500 border border-slate-300 rounded-lg p-1.5 bg-slate-50 cursor-pointer focus:outline-none"
+                  onChange={(e) => setAsoForm({ ...asoForm, arquivo_aso: e.target.files[0] })}
+                />
               </div>
 
               <div>
@@ -1230,6 +1291,19 @@ export default function Pcmso() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* CAMPO DE ANEXO DO LAUDO PGR / PCMSO */}
+              <div>
+                <label className=" text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                  <Paperclip size={14} /> Anexar Documento PGR/PCMSO da Função (PDF)
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="w-full text-xs text-slate-500 border border-slate-300 rounded-lg p-1.5 bg-slate-50 cursor-pointer focus:outline-none"
+                  onChange={(e) => setFuncaoForm({ ...funcaoForm, arquivo_pgr: e.target.files[0] })}
+                />
               </div>
 
               <div>

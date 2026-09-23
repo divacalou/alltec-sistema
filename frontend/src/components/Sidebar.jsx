@@ -37,7 +37,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
       <div className={`flex items-center border-b border-slate-800 ${recolhida ? 'justify-center py-5' : 'justify-center py-6 px-4'}`}>
         <img
           src={logo}
-          alt="Planna RH"
+          alt="All Tec"
           className={`object-contain transition-all duration-300 ${recolhida ? 'h-9 w-9' : 'h-14 w-auto max-w-full'}`}
         />
       </div>
@@ -85,7 +85,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
       </nav>
 
       <div className="p-4 border-t border-slate-800">
-        {!recolhida && <p className="text-[10px] text-slate-600 text-center">Planna RH & SST © {new Date().getFullYear()}</p>}
+        {!recolhida && <p className="text-[10px] text-slate-600 text-center">All Tec RH & SST © {new Date().getFullYear()}</p>}
       </div>
     </aside>
   );

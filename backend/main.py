@@ -1,24 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Planna RH & SST - API Backend (FastAPI + SQLite)
-Fonte única de verdade para todas as telas do sistema.
-
-Unifica o schema anteriormente dividido entre main.py e database.py,
-adiciona os endpoints que o frontend já consumia mas que não existiam
-(/api/colaboradores/setores, /api/colaboradores/{id}/permissao,
-/api/configuracoes) e valida CPF/dados obrigatórios no servidor,
-não apenas no frontend.
+All Tec - API Backend (FastAPI + SQLite)
+Com módulo de Leitura Avançada de Documentos Base (PGR/PCMSO) via Ollama + pypdf
 """
+import io
+import json
 import re
 import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException
+import requests
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from pypdf import PdfReader
 
-app = FastAPI(title="Planna RH & SST API", version="2.0.0")
+app = FastAPI(title="All Tec API", version="2.0.0")
 
 # --- CONFIGURAÇÃO DE CORS ---
 app.add_middleware(
@@ -29,7 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "planna_dados.db"
+DB_PATH = "alltec_dados.db"
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "llama3"
 
 
 # ----------------------------------------------------------------------
@@ -81,7 +81,6 @@ def normalizar_cpf(cpf: Optional[str]) -> Optional[str]:
 
 
 def cpf_valido(cpf: Optional[str]) -> bool:
-    """Valida os dígitos verificadores do CPF (mesmo algoritmo usado no frontend)."""
     cpf = re.sub(r"\D", "", cpf or "")
     if len(cpf) != 11 or cpf == cpf[0] * 11:
         return False
@@ -99,6 +98,20 @@ def cpf_valido(cpf: Optional[str]) -> bool:
         return False
 
     return True
+
+
+def extrair_texto_pdf(file_bytes: bytes) -> str:
+    """Extrai texto dos bytes de um PDF."""
+    try:
+        reader = PdfReader(io.BytesIO(file_bytes))
+        texto = ""
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                texto += t + "\n"
+        return texto
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao processar PDF: {str(e)}")
 
 
 # ----------------------------------------------------------------------
@@ -236,7 +249,6 @@ def init_db():
         """
     )
 
-    # --- Migração incremental para bancos já existentes (não apaga dados) ---
     def garantir_coluna(tabela, coluna, tipo_sql):
         cur.execute(f"PRAGMA table_info({tabela})")
         existentes = [c[1] for c in cur.fetchall()]
@@ -262,7 +274,6 @@ def init_db():
     garantir_coluna("pcmso_exames", "tem_periculosidade", "INTEGER DEFAULT 0")
     garantir_coluna("pcmso_exames", "percentual_periculosidade", "REAL")
 
-    # Parâmetros padrão de alerta (só cria se ainda não existirem)
     cur.execute("INSERT OR IGNORE INTO configuracoes (chave, valor) VALUES ('dias_alerta_aso', '30')")
     cur.execute("INSERT OR IGNORE INTO configuracoes (chave, valor) VALUES ('dias_alerta_epi', '15')")
 
@@ -348,7 +359,7 @@ class ExameComplementarInput(BaseModel):
 
 class AsoCreate(BaseModel):
     colaborador_id: int
-    tipo_exame: str  # Admissional | Periódico | Demissional | Retorno ao Trabalho | Mudança de Risco
+    tipo_exame: str
     data_exame: str
     resultado: str
     medico_crm: Optional[str] = None
@@ -399,12 +410,189 @@ class ConfiguracaoUpdate(BaseModel):
 
 
 # ----------------------------------------------------------------------
-# Rota raiz
+# Rota Raiz & Automação Inteligente via Ollama (PGR/PCMSO)
 # ----------------------------------------------------------------------
 @app.get("/")
 @app.get("/api")
 def read_root():
     return {"status": "API Planna rodando com sucesso", "versao": "2.0.0"}
+
+
+@app.post("/api/ia/importar-documentos-base")
+async def importar_documentos_base(
+    pgr_file: UploadFile = File(None),
+    pcmso_file: UploadFile = File(None)
+):
+    """
+    Recebe os arquivos PDF do PGR e/ou PCMSO, realiza a leitura inteligente
+    utilizando o Ollama e realiza o Upsert (atualização/inserção) nas tabelas
+    pgr_funcoes e pgr_exames_funcao sem perder o histórico dos funcionários.
+    """
+    if not pgr_file and not pcmso_file:
+        raise HTTPException(status_code=400, detail="Selecione pelo menos um documento (PGR ou PCMSO).")
+
+    texto_combinado = ""
+
+    if pgr_file:
+        conteudo_pgr = await pgr_file.read()
+        texto_combinado += f"--- CONTEÚDO PGR ---\n{extrair_texto_pdf(conteudo_pgr)}\n\n"
+
+    if pcmso_file:
+        conteudo_pcmso = await pcmso_file.read()
+        texto_combinado += f"--- CONTEÚDO PCMSO ---\n{extrair_texto_pdf(conteudo_pcmso)}\n\n"
+
+    # Truncamento de segurança para não extrapolar o contexto do Ollama
+    texto_combinado = texto_combinado[:15000]
+
+    prompt = f"""
+Você é um especialista em Engenharia de Segurança e Medicina do Trabalho.
+Analise o texto a seguir extraído dos laudos PGR e/ou PCMSO de uma empresa.
+Mapeie TODAS as funções encontradas com seus riscos, periculosidade, insalubridade e exames ocupacionais.
+
+Sua resposta DEVE SER EXCLUSIVAMENTE UM ARRAY JSON VÁLIDO. NÃO digite nenhuma palavra, introdução ou explicação além do JSON.
+
+Estrutura exata exigida por item:
+[
+  {{
+    "nome_funcao": "Nome do Cargo",
+    "riscos_identificados": "Ruído 85dB, poeiras, trabalho em altura",
+    "tem_insalubridade": true,
+    "grau_insalubridade": "Médio (20%)",
+    "tem_periculosidade": false,
+    "percentual_periculosidade": 0,
+    "exames": [
+      {{
+        "nome_exame": "Audiometria",
+        "periodicidade_meses": 12,
+        "obrigatorio_admissional": true,
+        "obrigatorio_periodico": true,
+        "obrigatorio_demissional": true,
+        "obrigatorio_retorno_trabalho": false,
+        "obrigatorio_mudanca_risco": true
+      }}
+    ]
+  }}
+]
+
+TEXTO BASE DOS DOCUMENTOS:
+{texto_combinado}
+"""
+
+    payload = {
+        "model": "llama3",
+        "prompt": texto_combinado,
+        "stream": False,
+        "format": "json"
+    }
+
+    try:
+        response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+        response.raise_for_status()
+        resultado_raw = response.json().get("response", "")
+        dados_funcoes = json.loads(resultado_raw)
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao conectar com Ollama local: {str(e)}")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="A IA não retornou uma estrutura JSON válida.")
+
+    if not isinstance(dados_funcoes, list):
+        raise HTTPException(status_code=500, detail="Formato JSON incorreto retornado pela IA.")
+
+    conn = get_db()
+    cur = conn.cursor()
+    funcoes_afetadas = []
+
+    try:
+        for item in dados_funcoes:
+            nome_funcao = item.get("nome_funcao", "").strip()
+            if not nome_funcao:
+                continue
+
+            riscos = item.get("riscos_identificados", "")
+            tem_insal = 1 if item.get("tem_insalubridade") else 0
+            grau_insal = item.get("grau_insalubridade")
+            tem_peric = 1 if item.get("tem_periculosidade") else 0
+            perc_peric = item.get("percentual_periculosidade", 0.0)
+
+            # 1. UPSERT na tabela pgr_funcoes (se existir atualiza, senão insere)
+            funcao_existente = cur.execute(
+                "SELECT id FROM pgr_funcoes WHERE lower(nome_funcao) = lower(?)", (nome_funcao,)
+            ).fetchone()
+
+            if funcao_existente:
+                funcao_id = funcao_existente["id"]
+                cur.execute(
+                    """
+                    UPDATE pgr_funcoes SET
+                        riscos_identificados = ?, tem_insalubridade = ?, grau_insalubridade = ?,
+                        tem_periculosidade = ?, percentual_periculosidade = ?
+                    WHERE id = ?
+                    """,
+                    (riscos, tem_insal, grau_insal, tem_peric, perc_peric, funcao_id)
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO pgr_funcoes (nome_funcao, riscos_identificados, tem_insalubridade, grau_insalubridade, tem_periculosidade, percentual_periculosidade)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (nome_funcao, riscos, tem_insal, grau_insal, tem_peric, perc_peric)
+                )
+                funcao_id = cur.lastrowid
+
+            # 2. Mesclagem dos exames da função (pgr_exames_funcao)
+            for ex in item.get("exames", []):
+                nome_exame = ex.get("nome_exame", "").strip()
+                if not nome_exame:
+                    continue
+
+                exame_existente = cur.execute(
+                    "SELECT id FROM pgr_exames_funcao WHERE funcao_id = ? AND lower(nome_exame) = lower(?)",
+                    (funcao_id, nome_exame)
+                ).fetchone()
+
+                periodicidade = ex.get("periodicidade_meses", 12)
+                adm = 1 if ex.get("obrigatorio_admissional", True) else 0
+                per = 1 if ex.get("obrigatorio_periodico", True) else 0
+                dem = 1 if ex.get("obrigatorio_demissional", True) else 0
+                ret = 1 if ex.get("obrigatorio_retorno_trabalho", False) else 0
+                mud = 1 if ex.get("obrigatorio_mudanca_risco", True) else 0
+
+                if exame_existente:
+                    cur.execute(
+                        """
+                        UPDATE pgr_exames_funcao SET
+                            periodicidade_meses = ?, obrigatorio_admissional = ?,
+                            obrigatorio_periodico = ?, obrigatorio_demissional = ?,
+                            obrigatorio_retorno_trabalho = ?, obrigatorio_mudanca_risco = ?
+                        WHERE id = ?
+                        """,
+                        (periodicidade, adm, per, dem, ret, mud, exame_existente["id"])
+                    )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO pgr_exames_funcao
+                        (funcao_id, nome_exame, periodicidade_meses, obrigatorio_admissional, obrigatorio_periodico, obrigatorio_demissional, obrigatorio_retorno_trabalho, obrigatorio_mudanca_risco)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (funcao_id, nome_exame, periodicidade, adm, per, dem, ret, mud)
+                    )
+
+            funcoes_afetadas.append(nome_funcao)
+
+        conn.commit()
+    except Exception as err:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar matriz no banco: {str(err)}")
+
+    conn.close()
+    return {
+        "status": "sucesso",
+        "mensagem": f"{len(funcoes_afetadas)} função(ões) sincronizada(s) com sucesso!",
+        "funcoes_sincronizadas": funcoes_afetadas
+    }
 
 
 # ----------------------------------------------------------------------
@@ -478,7 +666,6 @@ def cadastrar_setor(setor: SetorCreate):
 
 @app.get("/api/colaboradores/setores")
 def colaboradores_por_setor():
-    """Agregação usada no gráfico de rosca do Dashboard (colaboradores ativos por setor)."""
     conn = get_db()
     query = """
         SELECT s.nome AS setor, COUNT(c.id) AS quantidade
@@ -849,9 +1036,6 @@ def registrar_aso(aso: AsoCreate):
         conn.close()
         raise HTTPException(status_code=400, detail="O resultado do exame é obrigatório.")
 
-    # A data do próximo ASO é puxada pela MENOR periodicidade entre os exames
-    # complementares exigidos nesta bateria (ex.: audiometria a cada 12 meses
-    # antecipa o próximo ASO completo mesmo que outro exame vença em 24 meses).
     periodicidades = [
         item.periodicidade_meses for item in (aso.exames_realizados or []) if item.periodicidade_meses
     ]
@@ -892,7 +1076,7 @@ def registrar_aso(aso: AsoCreate):
 
 
 # ----------------------------------------------------------------------
-# PGR / Matriz de Risco por Função — base da automação do PCMSO
+# PGR / Matriz de Risco por Função
 # ----------------------------------------------------------------------
 @app.get("/api/pgr/funcoes")
 def listar_funcoes_pgr():
@@ -920,9 +1104,6 @@ def listar_funcoes_pgr():
 
 @app.get("/api/pgr/funcoes/mapa")
 def buscar_funcao_pgr_por_cargo(cargo: str):
-    """Usado pelo modal 'Lançar ASO' para carregar automaticamente a matriz da função
-    a partir do cargo do colaborador selecionado. Retorna null se a função ainda
-    não estiver cadastrada na matriz (o modal cai no fluxo manual nesse caso)."""
     conn = get_db()
     funcao = conn.execute(
         "SELECT * FROM pgr_funcoes WHERE lower(nome_funcao) = lower(?)", (cargo.strip(),)
@@ -1166,7 +1347,7 @@ def atualizar_status_ocorrencia(ocorrencia_id: int, dados: OcorrenciaStatusUpdat
 
 
 # ----------------------------------------------------------------------
-# Configurações (parâmetros globais de alerta)
+# Configurações
 # ----------------------------------------------------------------------
 @app.get("/api/configuracoes")
 def obter_configuracoes():

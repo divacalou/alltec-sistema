@@ -1,12 +1,25 @@
 /**
  * App.jsx — casco principal do sistema Planna RH & SST.
+ *
+ * NOTA IMPORTANTE: o arquivo App.jsx original não foi enviado junto com os
+ * demais arquivos do projeto, então este arquivo foi reconstruído do zero
+ * com base nos padrões já confirmados no restante do código:
+ *   - Navegação 100% por estado local (activeTab/setActiveTab), sem
+ *     react-router-dom (não há essa dependência no package.json e nenhum
+ *     arquivo usa <Routes>/<Route>).
+ *   - TODAS as telas e componentes ficam centralizados em `src/components/`
+ *     (confirmado pelo usuário — não há pasta `src/pages/` neste projeto).
+ *   - api.js mora em `src/services/api.js` (as telas já importam
+ *     `../services/api`, o que funciona de dentro de `src/components/`
+ *     exatamente da mesma forma que funcionaria a partir de `src/pages/`).
+ *
+ * Se a estrutura de pastas real do seu projeto for diferente, ajuste apenas
+ * os caminhos dos imports abaixo — a lógica de navegação permanece a mesma.
  */
-
 import React, { useEffect, useState } from 'react';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Plus, ChevronDown, Users, ShieldCheck, Stethoscope } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
-import RightSidebar from './components/RightSidebar';
 import KpiCards from './components/KpiCards';
 import DashboardCharts from './components/DashboardCharts';
 
@@ -33,10 +46,18 @@ const ABAS_VALIDAS = [
   'configuracoes'
 ];
 
+// Ações rápidas do dropdown "+ Nova Ação" no header do Dashboard.
+const ACOES_RAPIDAS = [
+  { label: 'Cadastrar Colaborador', tab: 'colaboradores', icon: Users },
+  { label: 'Emitir EPI', tab: 'epis', icon: ShieldCheck },
+  { label: 'Lançar ASO', tab: 'pcmso', icon: Stethoscope }
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [kpis, setKpis] = useState(null);
   const [loadingKpis, setLoadingKpis] = useState(false);
+  const [menuAcoesAberto, setMenuAcoesAberto] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'dashboard') {
@@ -66,12 +87,46 @@ export default function App() {
       case 'dashboard':
         return (
           <div className="space-y-6 bg-slate-50 min-h-screen p-6 text-slate-800">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <LayoutDashboard className="text-rose-600" size={24} /> Dashboard Geral
-              </h1>
-              <p className="text-xs text-slate-500 mt-1">Visão consolidada de RH e SST em tempo real.</p>
+            <div className="flex flex-wrap justify-between items-start gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                  <LayoutDashboard className="text-rose-600" size={26} /> Dashboard Geral
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">Visão consolidada de RH e SST em tempo real.</p>
+              </div>
+
+              <div className="relative">
+                <button
+                  onClick={() => setMenuAcoesAberto((prev) => !prev)}
+                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-sm transition-all"
+                >
+                  <Plus size={16} /> Nova Ação
+                  <ChevronDown size={14} className={`transition-transform ${menuAcoesAberto ? 'rotate-180' : ''}`} />
+                </button>
+
+                {menuAcoesAberto && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMenuAcoesAberto(false)} />
+                    <div className="absolute right-0 mt-2 w-60 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-20">
+                      {ACOES_RAPIDAS.map((acao) => (
+                        <button
+                          key={acao.tab}
+                          onClick={() => {
+                            setActiveTab(acao.tab);
+                            setMenuAcoesAberto(false);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <acao.icon size={15} className="text-rose-600 shrink-0" />
+                          {acao.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
+
             <KpiCards kpis={kpis} loading={loadingKpis} />
             <DashboardCharts />
           </div>
@@ -100,8 +155,6 @@ export default function App() {
       <Sidebar activeTab={abaAtual} setActiveTab={setActiveTab} />
 
       <main className="flex-1 overflow-y-auto">{renderConteudo()}</main>
-
-      {abaAtual === 'dashboard' && <RightSidebar setActiveTab={setActiveTab} />}
     </div>
   );
 }

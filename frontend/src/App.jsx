@@ -1,20 +1,6 @@
 /**
- * App.jsx — casco principal do sistema Planna RH & SST.
- *
- * NOTA IMPORTANTE: o arquivo App.jsx original não foi enviado junto com os
- * demais arquivos do projeto, então este arquivo foi reconstruído do zero
- * com base nos padrões já confirmados no restante do código:
- *   - Navegação 100% por estado local (activeTab/setActiveTab), sem
- *     react-router-dom (não há essa dependência no package.json e nenhum
- *     arquivo usa <Routes>/<Route>).
- *   - TODAS as telas e componentes ficam centralizados em `src/components/`
- *     (confirmado pelo usuário — não há pasta `src/pages/` neste projeto).
- *   - api.js mora em `src/services/api.js` (as telas já importam
- *     `../services/api`, o que funciona de dentro de `src/components/`
- *     exatamente da mesma forma que funcionaria a partir de `src/pages/`).
- *
- * Se a estrutura de pastas real do seu projeto for diferente, ajuste apenas
- * os caminhos dos imports abaixo — a lógica de navegação permanece a mesma.
+ * App.jsx — casco principal do sistema All Tec RH & SST.
+
  */
 import React, { useEffect, useState } from 'react';
 import { LayoutDashboard, Plus, ChevronDown, Users, ShieldCheck, Stethoscope } from 'lucide-react';
